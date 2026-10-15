@@ -1,5 +1,7 @@
 // Platform APIs missing from the DOM typings, and the NoSleep.js media module.
 
+/// <reference types="vite-plugin-pwa/client" />
+
 interface AudioSession {
   type: string;
 }

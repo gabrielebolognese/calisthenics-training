@@ -11,6 +11,7 @@ import { setSoundEnabled } from './player/audio';
 import { startSession, type LiveSession } from './player/machine';
 import { Player, startGesture } from './player/Player';
 import { setVoiceEnabled } from './player/voice';
+import { setTraining } from './pwa';
 import { Log } from './screens/Log';
 import { Onboarding } from './screens/Onboarding';
 import { Progress } from './screens/Progress';
@@ -65,6 +66,9 @@ function Shell({ data, refresh, dev }: { data: AppCtx['data']; refresh: () => Pr
   useEffect(() => {
     void requestPersistence();
   }, []);
+
+  // App updates wait until no session is running.
+  useEffect(() => setTraining(playing !== null), [playing]);
 
   const input: EngineInput = useMemo(
     () => ({ baselines: data.baselines, settings: data.settings, sessions: data.sessions, checkins: data.checkins, events: data.events }),

@@ -74,7 +74,11 @@ Each line records one gap: what the PDF (or the brief) left open, what I chose, 
 
 | # | Item | Result |
 |---|---|---|
-| A01 | `navigator.audioSession` type that mixes with music on iPhone (`transient` → fallback `ambient`) | Pending real-device check (milestone 3). |
+| A01 | `navigator.audioSession` type that mixes with music on iPhone (`transient` → fallback `ambient`) | Built: Settings switches between "Duck briefly" (`transient`) and "Mix" (`ambient`). Not yet checked on your iPhone: please run the music items in IPHONE_CHECKLIST.md and note the result here. Desktop Chrome has no Audio Session API, so it couldn't be tested here. |
+| A02 | "Auto update" vs. a reload in the middle of a session. | A new version installs by itself, but the reload that activates it waits until no session is running. | A reload mid-session would only need a "Continue" tap (the session resumes), but it would cut audio and the screen lock. |
+| A03 | Wake lock fallback. | The Screen Wake Lock API first, re-requested whenever the page becomes visible. Fallback: a hidden, muted, looping video started from the START tap, using NoSleep.js's tiny embedded video (NoSleep.js's own code is not used, because it skips the video whenever the API exists, even if the request is refused). | Brief §9. |
+| A04 | Holds that run out while the app is in the background or killed. | They count as done and clean, like a hold you completed. Fix them in Log if not. | The timer is timestamp-based; the alternative (asking after every resume) adds taps to the normal case. |
+| A05 | Dev mode (`?dev=1`). | Timers run 10x faster (logged seconds stay real); Settings gets a fake-date panel. Position jumps use the same "Shift position" control as normal use. | Brief §15. |
 
 ## Suggestions (not built)
 - "Short on time" mode that drops accessories first ("cut accessories first, never blocks 2 and 3").
