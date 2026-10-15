@@ -116,14 +116,15 @@ export function walk(input: Pick<EngineInput, 'baselines' | 'sessions' | 'events
   throw new Error('Cycle walk did not terminate');
 }
 
-/** The 7 days of the current week for the dot strip. */
-export function weekStrip(w: WalkResult): { day: number; key: string; state: 'done' | 'today' | 'upcoming' | 'skipped' }[] {
+/** The 7 days of the current week for the dot strip. "next" is the current day when it is up tomorrow. */
+export function weekStrip(w: WalkResult): { day: number; key: string; state: 'done' | 'today' | 'next' | 'upcoming' | 'skipped' }[] {
   const cur = w.current;
   const doneKeys = new Set(w.done.map((d) => d.key));
+  const curState = w.status === 'due' ? 'today' : 'next';
   return Array.from({ length: DAYS_PER_WEEK }, (_, i) => {
     const pos = { ...cur.pos, day: i + 1 };
     const key = posKey(pos);
-    const state = doneKeys.has(key) ? 'done' : i + 1 === cur.pos.day ? 'today' : i + 1 < cur.pos.day ? 'skipped' : 'upcoming';
+    const state = doneKeys.has(key) ? 'done' : i + 1 === cur.pos.day ? curState : i + 1 < cur.pos.day ? 'skipped' : 'upcoming';
     return { day: i + 1, key, state };
   });
 }

@@ -2,6 +2,7 @@
 // Editing a past set and re-running the fold recomputes everything after it.
 import { LINES } from '../plan/progression';
 import type { LineId } from '../plan/types';
+import { describeTarget } from './describe';
 import { judge } from './judge';
 import { makeCtx, prescribeDay, runBeforeSession, type SessionPrescription } from './prescribe';
 import { extractTests, latestTest } from './results';
@@ -18,6 +19,8 @@ export interface LineSummary {
   line: LineId;
   name: string;
   status: 'progressed' | 'repeat' | 'done' | 'skipped';
+  /** The line's numbers for its next session, when it has a rule. */
+  next?: string;
 }
 
 export interface DropEntry {
@@ -116,12 +119,13 @@ function summarize(o: Outcome, before: StateMap, after: StateMap, day: TimelineD
   const base = { line: p.line, name: p.name };
   if (!o.attempted) return { ...base, status: 'skipped' };
   if (!p.progresses) return { ...base, status: 'done' };
-  if (!o.success) return { ...base, status: 'repeat' };
   const def = LINES[p.line];
   const ctx = makeCtx(day, after, input);
-  const t0 = JSON.stringify(def.target(before[p.line], ctx));
-  const t1 = JSON.stringify(def.target(after[p.line], ctx));
-  return { ...base, status: t0 !== t1 ? 'progressed' : 'done' };
+  const t1 = def.target(after[p.line], ctx);
+  const next = t1 ? describeTarget(t1) : undefined;
+  if (!o.success) return { ...base, status: 'repeat', next };
+  const t0 = def.target(before[p.line], ctx);
+  return { ...base, status: JSON.stringify(t0) !== JSON.stringify(t1) ? 'progressed' : 'done', next };
 }
 
 /** Day number whose last two training sessions (since the last deload) were both down, if any. */

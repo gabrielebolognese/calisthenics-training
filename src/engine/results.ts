@@ -1,8 +1,8 @@
 // Test points and maxes for Progress, GTG and the next-cycle baselines.
 import { RESULT_GOALS } from '../plan/tests';
-import type { GoalId } from '../plan/types';
+import type { GoalId, LineId } from '../plan/types';
 import type { LocalDate } from './dates';
-import type { Baselines, LineResult, Side, TimelineDay } from './types';
+import type { Baselines, LineResult, SessionLog, Side, TimelineDay } from './types';
 
 export interface TestPoint {
   goal: GoalId;
@@ -63,6 +63,33 @@ export function extractTests(done: TimelineDay[], b: Baselines): TestPoint[] {
     }
   }
   return points;
+}
+
+const BEST_LINES: Partial<Record<GoalId, LineId[]>> = {
+  hspu: ['hspuB1', 'hspuB2', 'hspuB3', 'testHspu'],
+  pushup90: ['pushup90', 'test90'],
+  archer: ['archer', 'testArcherL', 'testArcherR'],
+  handstand: ['handstandMax', 'testHandstand'],
+  frontLever: ['flCluster', 'testFrontLever'],
+  flag: ['flag', 'testFlag'],
+  muscleUp: ['muEmom', 'muTotal30', 'muTotal40', 'testMuscleUp'],
+};
+
+/** Best clean set or hold in training and tests [D58]. */
+export function bestTraining(goal: GoalId, sessions: SessionLog[]): number | null {
+  const lines = BEST_LINES[goal];
+  if (!lines) return null;
+  let best: number | null = null;
+  for (const s of sessions) {
+    for (const r of s.lines) {
+      if (!lines.includes(r.line)) continue;
+      for (const set of r.sets) {
+        const v = set.seconds ?? set.reps;
+        if (set.clean && v !== undefined && (best === null || v > best)) best = v;
+      }
+    }
+  }
+  return best;
 }
 
 /** Latest test (or week 0) value per goal. For archer, the lower side of the latest test. */

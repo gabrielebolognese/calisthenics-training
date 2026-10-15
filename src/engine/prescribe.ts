@@ -94,6 +94,23 @@ function toPrescription(id: LineId, t: Target, slot: Slot, dayKind: DayKind, inp
   };
 }
 
+/** Day 3's optional easy handstand practice as a one-line session, logged as 'extra' [D63]. */
+export function extraPracticePrescription(day: TimelineDay, states: StateMap, input: PlanInput): SessionPrescription {
+  const t = LINES.practiceShort.target(states.practiceShort, makeCtx(day, states, input))!;
+  const line = toPrescription('practiceShort', t, { line: 'practiceShort', rest: 0 }, 'training', input);
+  return {
+    key: 'extra',
+    pos: day.pos,
+    kind: day.kind,
+    weekKind: day.weekKind,
+    weekSeq: day.weekSeq,
+    title: 'Easy handstand practice',
+    warmup: false,
+    lines: [{ ...line, restAfterSec: 0, progresses: false, askEffort: false }],
+    notes: [],
+  };
+}
+
 export function prescribeDay(
   day: TimelineDay,
   states: StateMap,
