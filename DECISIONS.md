@@ -72,13 +72,26 @@ Each line records one gap: what the PDF (or the brief) left open, what I chose, 
 
 ## App behavior (filled in during the build)
 
-| # | Item | Result |
-|---|---|---|
-| A01 | `navigator.audioSession` type that mixes with music on iPhone (`transient` → fallback `ambient`) | Built: Settings switches between "Duck briefly" (`transient`) and "Mix" (`ambient`). Not yet checked on your iPhone: please run the music items in IPHONE_CHECKLIST.md and note the result here. Desktop Chrome has no Audio Session API, so it couldn't be tested here. |
+| # | Item | Result | Why |
+|---|---|---|---|
+| A01 | `navigator.audioSession` type that mixes with music on iPhone (`transient` → fallback `ambient`) | Built: Settings switches between "Duck briefly" (`transient`) and "Mix" (`ambient`). Not yet checked on your iPhone: please run the music items in IPHONE_CHECKLIST.md and note the result here. Desktop Chrome has no Audio Session API, so it couldn't be tested here. | Brief §8. |
 | A02 | "Auto update" vs. a reload in the middle of a session. | A new version installs by itself, but the reload that activates it waits until no session is running. | A reload mid-session would only need a "Continue" tap (the session resumes), but it would cut audio and the screen lock. |
 | A03 | Wake lock fallback. | The Screen Wake Lock API first, re-requested whenever the page becomes visible. Fallback: a hidden, muted, looping video started from the START tap, using NoSleep.js's tiny embedded video (NoSleep.js's own code is not used, because it skips the video whenever the API exists, even if the request is refused). | Brief §9. |
 | A04 | Holds that run out while the app is in the background or killed. | They count as done and clean, like a hold you completed. Fix them in Log if not. | The timer is timestamp-based; the alternative (asking after every resume) adds taps to the normal case. |
 | A05 | Dev mode (`?dev=1`). | Timers run 10x faster (logged seconds stay real); Settings gets a fake-date panel. Position jumps use the same "Shift position" control as normal use. | Brief §15. |
+
+## Redesign (your request, 2026-10-15)
+
+You asked for three bottom tabs (Today, Statistics, Logs), a centered START button, a workout streak, lifetime totals per exercise with charts, and the current maxes in Logs. This replaces the brief's four tabs (§10).
+
+| # | Item | Result | Why |
+|---|---|---|---|
+| A06 | What the streak counts. | Plan days kept in a row. A training day counts when its session is done on its date. A rest day counts as soon as it starts, since resting is what the plan asks. A training day not done on its date breaks the streak. The streak stays alive until the end of today, and the best streak is kept. The Day 3 extra practice doesn't count. | Counting only training days would break the streak on every rest day. The plan's rule is one cycle day per date, never doubled up, so a calendar gap is exactly a missed day. |
+| A07 | "Time trained". | Wall time from START to the end of the session, warm-up included. One session counts for at most 3 h, so a session left open in the background can't inflate the total. The weekly chart uses plan weeks (W1, W2, …), like the rest of the app. | Rests are part of the training. 3 h is about twice the longest session estimate (75 min). |
+| A08 | How "so far you've done X" adds up. | Reps: clean reps only. Partial 90° reps and bent-arm archers are "logged, not counted" (PDF p.2), and the optional bent-arm archer set gets its own row. Per-side archer reps count both sides. Holds: every second held, including sets you stopped early, since that time was still held. Attempts (no-transition muscle-up, flag on a straight bar): clean attempts out of all attempts. Test-day sets count too. The "Time holding" tile leaves out the easy handstand practice minutes, which still get their own row. | One total per exercise, across every session and every variation of it. The "Toes to bar" stage counts as hanging leg raises. |
+| A09 | Where the old screens went. | Progress → Logs › Maxes (the latest test per goal, change since week 0, target bar, tap for the test chart). The bodyweight chart → Statistics. Log → Logs › Sessions and Logs › Check-ins. Settings → the gear at the top right of every tab. START → a large round button in the middle of Today, instead of the bar above the tabs. | Nothing was removed; set editing and session delete work as before. |
+| A10 | Look. | Same dark, high-contrast base and the same green. Rounded numerals (SF Pro Rounded on iPhone), cards with soft gradients, a floating tab bar, a gently pulsing START button, short screen transitions. With "Reduce Motion" on, the animations are off. | "A little more premium and pleasing to look at". No new dependencies, no web fonts, so it still works offline. |
+| A11 | The cue shown during a max attempt. | Max holds and AMRAPs now show "Max effort" and the PDF's form standard for that exercise, instead of the working-set cue. | The handstand max attempt used to say "~65% of your max", which is the cue for working sets. Found while checking the new screens. |
 
 ## Suggestions (not built)
 - "Short on time" mode that drops accessories first ("cut accessories first, never blocks 2 and 3").

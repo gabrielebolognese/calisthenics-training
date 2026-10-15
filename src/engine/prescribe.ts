@@ -1,5 +1,5 @@
 import { blockOf, blockWeekOf, type DayKind, type WeekKind } from '../plan/blocks';
-import { EXERCISES } from '../plan/exercises';
+import { EXERCISES, STANDARDS } from '../plan/exercises';
 import { LINES } from '../plan/progression';
 import { DAYS, RIR_OVERRIDES, TEST_DAYS, type Slot, type SlotCtx } from '../plan/sessions';
 import { TEST_NOTES } from '../plan/tests';
@@ -80,7 +80,8 @@ function toPrescription(id: LineId, t: Target, slot: Slot, dayKind: DayKind, inp
     bilateral,
     line: id,
     name: t.name ?? ex.name,
-    cue: ex.cue,
+    // A working-set cue ("~65% of your max") is wrong on a max attempt: show the standard that ends it.
+    cue: t.kind === 'maxHold' ? `Max effort. ${STANDARDS[ex.standard]}` : t.kind === 'amrap' ? `Max clean reps. ${STANDARDS[ex.standard]}` : ex.cue,
     rir: RIR_OVERRIDES[id] ?? slot.rir,
     restSec: slot.rest,
     restAfterSec: slot.restAfter ?? slot.rest,

@@ -13,10 +13,10 @@ A personal PWA that runs one calisthenics plan on an iPhone: it shows exactly wh
 
 ```
 src/plan/     the plan as data: exercises, sessions, progression lines, abs, tests, GTG
-src/engine/   pure functions: cycle walk, progression fold, prescriptions, deload, alerts, player steps
+src/engine/   pure functions: cycle walk, progression fold, prescriptions, deload, alerts, player steps, stats
 src/player/   the session player: state machine, timers, beeps, voice, wake lock
 src/db/       IndexedDB (Dexie), export/import
-src/screens/  Today, Progress, Log, Settings, Onboarding
+src/screens/  Today, Statistics, Logs, Settings (behind the gear), Onboarding
 ```
 
 The engine replays the full log every time, so editing a past set recomputes everything after it. Entry point: `computeToday(input, now)` in `src/engine/index.ts`. The player is a pure reducer over timestamps (`src/player/machine.ts`), saved to IndexedDB on every change, so a reload resumes the exact step.
@@ -38,5 +38,5 @@ Every push to `main` runs the tests and deploys to GitHub Pages (`.github/workfl
 1. Spec and decisions: done
 2. Plan data, engine, tests: done
 3. Session player: done
-4. Today, Log, Progress, Settings screens: done
+4. Today, Log, Progress, Settings screens: done (redesigned on 2026-10-15 as Today, Statistics, Logs; see DECISIONS A06–A11)
 5. PWA and deploy: done; on-device checks in `IPHONE_CHECKLIST.md`

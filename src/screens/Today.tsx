@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { formatDate, positionLabel, type AppCtx } from '../app/context';
+import { useState, type ReactNode } from 'react';
+import { formatDate, formatLongDate, positionShort, type AppCtx } from '../app/context';
 import { saveCheckin, saveGtg } from '../db/repo';
 import { exportJson, downloadText } from '../db/exportImport';
 import { describeTarget } from '../engine/describe';
@@ -8,6 +8,8 @@ import { latestTest, week0Points } from '../engine/results';
 import type { SessionOptions } from '../engine/rules';
 import { DAYS } from '../plan/sessions';
 import { GOALS } from '../plan/targets';
+import { Header } from '../ui/Header';
+import { Icon } from '../ui/Icon';
 import { Sheet } from '../ui/Sheet';
 import { Stepper } from '../ui/Stepper';
 
@@ -29,123 +31,229 @@ export function Today({
   const cur = w.current;
   const [checkIn, setCheckIn] = useState<number | null>(null);
   const training = w.status === 'due' && cur.kind !== 'off' && today.prescription.lines.length > 0;
+  const tomorrow = `Day ${cur.pos.day}, ${cur.kind === 'off' ? 'rest day' : DAYS[cur.pos.day]!.name}`;
 
   return (
-    <div className="screen" style={training ? { paddingBottom: 200 } : undefined}>
-      <div className="position">{positionLabel(cur)}</div>
-      <div className="dots" aria-label="This week">
-        {today.strip.map((d) => (
-          <div key={d.key} className={`dot ${d.state}`} aria-label={`Day ${d.day}: ${d.state}`}>
-            {d.day}
-          </div>
-        ))}
-      </div>
+    <div className="screen">
+      <Header eyebrow={formatLongDate(today.date)} title="Today" onSettings={ctx.openSettings} />
+      <StreakCard ctx={ctx} training={training} />
+      <WeekStrip ctx={ctx} />
 
-      <div className="stack" style={{ marginTop: 12 }}>
-        <Alerts ctx={ctx} onCheckIn={setCheckIn} />
-      </div>
+      {today.alerts.length > 0 && (
+        <div className="stack" style={{ marginTop: 16 }}>
+          <Alerts ctx={ctx} onCheckIn={setCheckIn} />
+        </div>
+      )}
 
       {w.status === 'cycleComplete' ? (
         <CycleDone ctx={ctx} />
       ) : w.status === 'notStarted' ? (
         <>
-          <h1>Starts {formatDate(w.availableFrom)}</h1>
-          <p className="muted">Day 1 is Push A. Here is what it looks like:</p>
-          <Preview ctx={ctx} options={options} setOptions={setOptions} />
+          <Hero
+            ctx={ctx}
+            orb={
+              <div className="orb orb-quiet">
+                <Icon name="calendar" size={46} />
+              </div>
+            }
+            title={`Starts ${formatDate(w.availableFrom)}`}
+            foot="Day 1 is Push A. Here is what it looks like."
+          />
+          <SessionList ctx={ctx} options={options} setOptions={setOptions} />
         </>
       ) : w.status === 'doneToday' ? (
-        <>
-          <h1>Done for today</h1>
-          <p className="muted">
-            Tomorrow: Day {cur.pos.day}, {cur.kind === 'off' ? 'rest day' : DAYS[cur.pos.day]!.name}. One cycle day per date, never double up.
-          </p>
-        </>
+        <Hero
+          ctx={ctx}
+          orb={
+            <div className="orb orb-done">
+              <Icon name="check" size={58} strokeWidth={2.6} />
+            </div>
+          }
+          title="Done for today"
+          foot={`Tomorrow: ${tomorrow}. One cycle day per date, never double up.`}
+        />
       ) : cur.kind === 'off' ? (
         <>
-          <h1>Rest day</h1>
-          <p className="muted">
-            {cur.pos.day === 3
-              ? 'Off or tricking. Max-effort tricking fits best today or on Day 7.'
-              : 'Full rest.'}
-          </p>
-          {cur.pos.day === 3 && (
-            <button className="btn btn-block" onClick={onExtra}>
-              Optional: 5 min easy handstand practice
-            </button>
-          )}
+          <Hero
+            ctx={ctx}
+            orb={
+              <div className="orb orb-quiet">
+                <Icon name="moon" size={48} />
+              </div>
+            }
+            title="Rest day"
+            foot={cur.pos.day === 3 ? 'Off or tricking. Max-effort tricking fits best today or on Day 7.' : 'Full rest. It still counts for your streak.'}
+          >
+            {cur.pos.day === 3 && (
+              <button className="btn btn-block" style={{ marginTop: 16 }} onClick={onExtra}>
+                Optional: 5 min easy handstand practice
+              </button>
+            )}
+          </Hero>
           {today.gtg && <GtgChecklist ctx={ctx} gtg={today.gtg} />}
         </>
       ) : (
         <>
-          <Preview ctx={ctx} options={options} setOptions={setOptions} />
+          <Hero
+            ctx={ctx}
+            title={today.prescription.title}
+            orb={
+              <button className="orb orb-go" onClick={onStart} aria-label="Start session">
+                <Icon name="play" size={30} />
+                <span>START</span>
+              </button>
+            }
+            foot={today.prescription.warmup ? 'Starts with the 10 min warm-up.' : undefined}
+            chips
+          />
+          <SessionList ctx={ctx} options={options} setOptions={setOptions} />
           {today.gtg && <GtgChecklist ctx={ctx} gtg={today.gtg} />}
         </>
       )}
 
-      {training && (
-        <div className="start-bar">
-          <button className="btn btn-primary btn-big btn-block" onClick={onStart}>
-            START
-          </button>
-        </div>
-      )}
       {checkIn !== null && <CheckInSheet ctx={ctx} weekSeq={checkIn} onClose={() => setCheckIn(null)} />}
     </div>
   );
 }
 
-function Preview({ ctx, options, setOptions }: { ctx: AppCtx; options: SessionOptions; setOptions: (o: SessionOptions) => void }) {
+function StreakCard({ ctx, training }: { ctx: AppCtx; training: boolean }) {
+  const s = ctx.stats.streak;
+  const w = ctx.today.walk;
+  const hint = s.today
+    ? w.status === 'doneToday'
+      ? 'Today’s session is in.'
+      : 'Rest day, kept as planned.'
+    : s.current
+      ? training
+        ? `Train today to make it ${s.current + 1}.`
+        : 'Rest days count too.'
+      : training
+        ? 'Train today to start one.'
+        : 'Every plan day you keep adds one.';
+  return (
+    <div className={`streak ${s.current ? 'lit' : ''}`}>
+      <div className="streak-icon">
+        <Icon name="flame" size={26} />
+      </div>
+      <div className="streak-main">
+        <div className="streak-num">
+          <span className="num">{s.current}</span> day streak
+        </div>
+        <div className="small muted">{hint}</div>
+      </div>
+      <div className="streak-best">
+        <div className="eyebrow">Best</div>
+        <div className="num">{s.best}</div>
+      </div>
+    </div>
+  );
+}
+
+function WeekStrip({ ctx }: { ctx: AppCtx }) {
+  return (
+    <div className="week" aria-label="This week">
+      {ctx.today.strip.map((d) => (
+        <div key={d.key} className={`wday is-${d.state}`} aria-label={`Day ${d.day}: ${d.state}`}>
+          <span className="wday-name">{DAYS[d.day]!.name.replace('Off or tricking', 'Off')}</span>
+          <span className="wday-dot num">{d.state === 'done' ? <Icon name="check" size={16} strokeWidth={3} /> : d.day}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Hero({
+  ctx,
+  orb,
+  title,
+  foot,
+  chips,
+  children,
+}: {
+  ctx: AppCtx;
+  orb: ReactNode;
+  title: string;
+  foot?: string;
+  chips?: boolean;
+  children?: ReactNode;
+}) {
   const { today } = ctx;
-  const p = today.prescription;
   const cur = today.walk.current;
   const isTest = cur.kind.startsWith('test');
   const label =
     cur.weekKind === 'insertedDeload' ? 'Extra deload week' : isTest ? 'Test week' : cur.weekKind === 'deloadTest' ? 'Deload week' : null;
+  return (
+    <section className="hero">
+      <div className="eyebrow">{positionShort(cur)}</div>
+      <h2 className="hero-title">{title}</h2>
+      {chips && (
+        <div className="chips">
+          {label && <span className={`chip ${isTest ? 'test' : 'deload'}`}>{label}</span>}
+          <span className="chip">
+            <Icon name="clock" size={15} strokeWidth={2.2} />~{today.estimatedMinutes} min
+          </span>
+          <span className="chip">{today.prescription.lines.length} exercises</span>
+        </div>
+      )}
+      <div className="orb-wrap">{orb}</div>
+      {foot && <p className="hero-foot">{foot}</p>}
+      {children}
+    </section>
+  );
+}
+
+function SessionList({ ctx, options, setOptions }: { ctx: AppCtx; options: SessionOptions; setOptions: (o: SessionOptions) => void }) {
+  const p = ctx.today.prescription;
   const hasLight = p.lines.some((l) => l.line === 'plancheLight');
+  const light = options.plancheLight ?? 'oneLeg';
 
   return (
-    <>
-      <h1>{p.title}</h1>
-      <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
-        {label && <span className={`label ${isTest ? 'test' : 'deload'}`}>{label}</span>}
-        <span className="label">~{today.estimatedMinutes} min</span>
+    <section className="section">
+      <div className="section-head">
+        <h2>The session</h2>
+        <span className="muted small">{p.lines.length} exercises</span>
       </div>
       {p.notes.map((n) => (
-        <p key={n} className="small muted" style={{ margin: '8px 0 0' }}>
+        <p key={n} className="small muted note-line">
           {n}
         </p>
       ))}
       {hasLight && (
-        <div className="two-col" style={{ marginTop: 12 }}>
+        <div className="segmented" role="group" aria-label="Light planche">
           {(['oneLeg', 'advTuck'] as const).map((v) => (
-            <button
-              key={v}
-              className={`btn btn-small ${(options.plancheLight ?? 'oneLeg') === v ? 'btn-primary' : ''}`}
-              onClick={() => setOptions({ ...options, plancheLight: v })}
-            >
+            <button key={v} aria-pressed={light === v} onClick={() => setOptions({ ...options, plancheLight: v })}>
               Light planche: {v === 'oneLeg' ? 'one-leg' : 'adv tuck'}
             </button>
           ))}
         </div>
       )}
-      <div className="card preview" style={{ marginTop: 12 }}>
-        <ul>
-          {p.lines.map((l) => (
-            <li key={l.line}>
-              <span>
-                {l.name}
-                {l.note && <div className="small muted">{l.note}</div>}
-              </span>
-              <span className="what num">
-                {describeTarget(l)}
-                {l.rir && <div className="small muted">RIR {l.rir}</div>}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </div>
-      {p.warmup && <p className="small muted">Starts with the 10 min warm-up.</p>}
-    </>
+      <ol className="card ex-list">
+        {p.warmup && (
+          <li className="ex warm">
+            <span className="ex-n">
+              <Icon name="bolt" size={15} strokeWidth={2.2} />
+            </span>
+            <span className="ex-name">
+              Warm-up
+              <div className="small muted">10 min, guided</div>
+            </span>
+          </li>
+        )}
+        {p.lines.map((l, i) => (
+          <li key={l.line} className="ex">
+            <span className="ex-n num">{i + 1}</span>
+            <span className="ex-name">
+              {l.name}
+              {l.note && <div className="small muted">{l.note}</div>}
+            </span>
+            <span className="ex-what num">
+              {describeTarget(l)}
+              {l.rir && <div className="small muted">RIR {l.rir}</div>}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }
 
@@ -269,7 +377,7 @@ function GtgChecklist({ ctx, gtg }: { ctx: AppCtx; gtg: Gtg }) {
   };
   const cols = gtg.muReps !== null ? '40px 1fr 1fr' : '40px 1fr';
   return (
-    <div className="card stack" style={{ marginTop: 16 }}>
+    <div className="card stack" style={{ marginTop: 24 }}>
       <div>
         <strong>GTG</strong>
         <div className="small muted">No timers, no alarms. Attach each set to something you already do. A missed set doesn't matter.</div>
@@ -298,8 +406,15 @@ function CycleDone({ ctx }: { ctx: AppCtx }) {
   const unit = (u: string) => (u === 's' ? ' s' : '');
   return (
     <>
-      <h1>Cycle {today.walk.current.pos.cycle - 1} complete</h1>
-      <p className="muted">Week 0 against your latest tests. The next cycle uses these tests as its new baselines.</p>
+      <section className="hero">
+        <div className="orb-wrap">
+          <div className="orb orb-done">
+            <Icon name="trophy" size={54} strokeWidth={2.2} />
+          </div>
+        </div>
+        <h2 className="hero-title">Cycle {today.walk.current.pos.cycle - 1} complete</h2>
+        <p className="hero-foot">Week 0 against your latest tests. The next cycle uses these tests as its new baselines.</p>
+      </section>
       <div className="card">
         <table className="sets">
           <thead>

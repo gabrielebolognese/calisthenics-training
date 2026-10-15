@@ -5,6 +5,7 @@ import type { AppSettings } from './db/schema';
 import { computeToday } from './engine/index';
 import { extraPracticePrescription } from './engine/prescribe';
 import type { SessionOptions } from './engine/rules';
+import { computeStats } from './engine/stats';
 import { buildSteps } from './engine/steps';
 import type { EngineEvent, EngineInput, SessionLog } from './engine/types';
 import { setSoundEnabled } from './player/audio';
@@ -12,10 +13,10 @@ import { startSession, type LiveSession } from './player/machine';
 import { Player, startGesture } from './player/Player';
 import { setVoiceEnabled } from './player/voice';
 import { setTraining } from './pwa';
-import { Log } from './screens/Log';
+import { Logs } from './screens/Logs';
 import { Onboarding } from './screens/Onboarding';
-import { Progress } from './screens/Progress';
 import { SettingsScreen } from './screens/Settings';
+import { Stats } from './screens/Stats';
 import { Summary } from './screens/Summary';
 import { Today } from './screens/Today';
 import { TabBar, type Tab } from './ui/TabBar';
@@ -53,6 +54,7 @@ export function App() {
 
 function Shell({ data, refresh, dev }: { data: AppCtx['data']; refresh: () => Promise<void>; dev: Dev }) {
   const [tab, setTab] = useState<Tab>('today');
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [playing, setPlaying] = useState<{ live: LiveSession; resumed: boolean } | null>(() =>
     data.live ? { live: data.live, resumed: true } : null,
   );
@@ -76,11 +78,18 @@ function Shell({ data, refresh, dev }: { data: AppCtx['data']; refresh: () => Pr
   );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const today = useMemo(() => computeToday(input, now, options), [input, minute, options]);
+  const stats = useMemo(() => computeStats(input, today), [input, today]);
+
+  // Each tab opens at the top.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [tab, settingsOpen]);
 
   const ctx: AppCtx = {
     data,
     input,
     today,
+    stats,
     now,
     dev,
     refresh,
@@ -92,6 +101,7 @@ function Shell({ data, refresh, dev }: { data: AppCtx['data']; refresh: () => Pr
       await saveSettings({ ...data.settings, ...patch });
       await refresh();
     },
+    openSettings: () => setSettingsOpen(true),
   };
 
   const speed = dev.on ? 10 : 1;
@@ -136,11 +146,24 @@ function Shell({ data, refresh, dev }: { data: AppCtx['data']; refresh: () => Pr
 
   return (
     <>
-      {tab === 'today' && <Today ctx={ctx} onStart={start} onExtra={startExtra} options={options} setOptions={setOptions} />}
-      {tab === 'progress' && <Progress ctx={ctx} />}
-      {tab === 'log' && <Log ctx={ctx} />}
-      {tab === 'settings' && <SettingsScreen ctx={ctx} />}
-      <TabBar tab={tab} onChange={setTab} />
+      <div className="view" key={settingsOpen ? 'settings' : tab}>
+        {settingsOpen ? (
+          <SettingsScreen ctx={ctx} onBack={() => setSettingsOpen(false)} />
+        ) : (
+          <>
+            {tab === 'today' && <Today ctx={ctx} onStart={start} onExtra={startExtra} options={options} setOptions={setOptions} />}
+            {tab === 'stats' && <Stats ctx={ctx} />}
+            {tab === 'logs' && <Logs ctx={ctx} />}
+          </>
+        )}
+      </div>
+      <TabBar
+        tab={settingsOpen ? null : tab}
+        onChange={(t) => {
+          setSettingsOpen(false);
+          setTab(t);
+        }}
+      />
     </>
   );
 }

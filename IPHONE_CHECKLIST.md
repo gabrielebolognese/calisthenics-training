@@ -33,7 +33,7 @@ Start music in Spotify or Apple Music, then START a session.
 
 - [ ] Beeps play over the music, and the music keeps playing.
 - [ ] Voice cues ("Set 2 of 4…", "Rest 90 seconds") play, and the music keeps playing (ducked briefly is fine, stopping is not).
-- [ ] Settings → Mixing with music → try "Duck briefly" and "Mix". Which one works better? Does the ring/silent switch mute the beeps?
+- [ ] Settings (gear, top right) → Mixing with music → try "Duck briefly" and "Mix". Which one works better? Does the ring/silent switch mute the beeps?
 - [ ] Note in DECISIONS.md A01: which mode, and whether music ever stopped.
 
 ## Offline
@@ -44,7 +44,7 @@ Start music in Spotify or Apple Music, then START a session.
 
 - [ ] Settings → Export backup: a JSON file is saved (Files app).
 - [ ] Settings → Reset all data (three taps): onboarding appears.
-- [ ] Onboarding → Start, then Settings → Import backup → choose the file: Log shows your sessions again and Today is back at the right day.
+- [ ] Onboarding → Start, then Settings → Import backup → choose the file: Logs → Sessions shows your sessions again and Today is back at the right day.
 
 ## Updates
 

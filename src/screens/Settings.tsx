@@ -4,9 +4,10 @@ import { downloadText, exportJson, importJson, resetAll } from '../db/exportImpo
 import type { AppSettings } from '../db/schema';
 import { localDate } from '../engine/dates';
 import { screenAwake, type AwakeStatus } from '../player/wakeLock';
+import { Header } from '../ui/Header';
 
 /** Brief §10 Settings. */
-export function SettingsScreen({ ctx }: { ctx: AppCtx }) {
+export function SettingsScreen({ ctx, onBack }: { ctx: AppCtx; onBack: () => void }) {
   const s = ctx.data.settings;
   const set = (patch: Partial<AppSettings>) => void ctx.updateSettings(patch);
   const cur = ctx.today.walk.current;
@@ -51,7 +52,7 @@ export function SettingsScreen({ ctx }: { ctx: AppCtx }) {
 
   return (
     <div className="screen">
-      <h1>Settings</h1>
+      <Header onBack={onBack} title="Settings" />
 
       <h2>Sound</h2>
       <div className="card">

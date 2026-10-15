@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AppData } from '../db/repo';
 import type { AppSettings } from '../db/schema';
 import { blockOf } from '../plan/blocks';
 import { DAYS } from '../plan/sessions';
 import type { Today } from '../engine/index';
+import type { Stats } from '../engine/stats';
 import type { EngineEvent, EngineInput, TimelineDay } from '../engine/types';
 
 export const DAY_MS = 86_400_000;
@@ -18,12 +19,14 @@ export interface AppCtx {
   data: AppData & { baselines: NonNullable<AppData['baselines']> };
   input: EngineInput;
   today: Today;
+  stats: Stats;
   /** App time in ms (includes the dev date offset). */
   now: number;
   dev: Dev;
   refresh: () => Promise<void>;
   addEvent: (e: EngineEvent) => Promise<void>;
   updateSettings: (patch: Partial<AppSettings>) => Promise<void>;
+  openSettings: () => void;
 }
 
 function readOffset(): number {
@@ -69,10 +72,34 @@ export function useClock(): number {
 
 /** "Block 1 · Week 3 · Day 4: Push B" (brief §10). */
 export function positionLabel(day: TimelineDay): string {
+  return `${positionShort(day)}: ${DAYS[day.pos.day]!.name}`;
+}
+
+/** "Block 1 · Week 3 · Day 4". */
+export function positionShort(day: TimelineDay): string {
   const p = day.pos;
   const cycle = p.cycle > 1 ? `Cycle ${p.cycle} · ` : '';
   const where = p.inserted ? `Extra deload week (before week ${p.week})` : `Block ${blockOf(p.week)} · Week ${p.week}`;
-  return `${cycle}${where} · Day ${p.day}: ${DAYS[p.day]!.name}`;
+  return `${cycle}${where} · Day ${p.day}`;
+}
+
+/** A drill-down (one exercise, one session): opens at the top, and going back restores the list's scroll. */
+export function useDrill<T>(): [T | null, (v: T | null) => void] {
+  const [open, set] = useState<T | null>(null);
+  const saved = useRef(0);
+  const back = useRef(false);
+  useLayoutEffect(() => {
+    window.scrollTo(0, back.current ? saved.current : 0);
+    back.current = false;
+  }, [open]);
+  return [
+    open,
+    (v) => {
+      if (v !== null) saved.current = window.scrollY;
+      else back.current = true;
+      set(v);
+    },
+  ];
 }
 
 export function newId(): string {
@@ -87,3 +114,25 @@ export function formatDate(d: string): string {
   const [y, m, day] = d.split('-').map(Number) as [number, number, number];
   return new Date(y, m - 1, day).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 }
+
+export function formatLongDate(d: string): string {
+  const [y, m, day] = d.split('-').map(Number) as [number, number, number];
+  return new Date(y, m - 1, day).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+/** "12 h 40 min", "45 min". */
+export function formatDuration(ms: number): string {
+  const min = Math.round(ms / 60_000);
+  const h = Math.floor(min / 60);
+  return h ? `${h} h ${String(min % 60).padStart(2, '0')} min` : `${min} min`;
+}
+
+/** Seconds held: "45 s", "12 min 30 s", "1 h 05 min". */
+export function formatSeconds(s: number): string {
+  s = Math.round(s);
+  if (s < 60) return `${s} s`;
+  if (s < 3600) return s % 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s / 60} min`;
+  return formatDuration(s * 1000);
+}
+
+export const formatInt = (n: number) => Math.round(n).toLocaleString();
