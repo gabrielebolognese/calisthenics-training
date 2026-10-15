@@ -215,7 +215,7 @@ Note: in this table, straddle lever, half-straddle planche and +10 kg MU appear 
 | 2 | `weightedMu` | 4 x 2 at +5 kg | 3 min | 1–3 [D05] | W1 |
 | 3 | `flCluster` | 6 x 3 s | 90 s | n/a | F1 |
 | 4 | `flRaise` | 3 x 3 | 2 min | 1–3 [D05] | F2 |
-| 5 | `weightedPullup` | 4 x 5 at the starting load | 2 to 3 min → 150 s [D06] | 2 | WP1 |
+| 5 | `weightedPullup` | 4 x 5 at +5 kg to start [D24] | 2 to 3 min → 150 s [D06] | 2 | WP1 |
 | 6 | `flag` | 6 x 2 s | 90 s | n/a | G1 |
 
 ### Day 3: Off or tricking
@@ -327,7 +327,7 @@ Hard blocks progression. For abs (RIR 0–1), "Right" means near failure. The ra
 | W1 | Weighted muscle-up | 4 x 2 at +5 kg | LOAD: 4x2 → 4x3 → 4x4, then +step at 4x2, and repeat. step = plate increment setting (5 kg default ⇒ +10 kg) [D23] | none | n/a | p.9 |
 | F1 | Front lever clusters | 6 x 3 s | SEQ: 6x3, 8x3, 6x4, 8x4, then by the same rule "add holds first, then seconds": 6x5, 8x5, 6x6… [D14] | n/a | n/a | p.8 |
 | F2 | Front lever raises | 3 x 3 | DP | 3 x 5 | hold | p.8 |
-| WP1 | Weighted pull-ups | 4 x 5 at the onboarding load, RIR 2 | DP | 4 x 8 [D24 ⚑] | +increment, back to 4 x 5 | p.5, p.10 |
+| WP1 | Weighted pull-ups | 4 x 5 at +5 kg (onboarding, editable), RIR 2 | Calibration first: until a session is rated Right or Hard, a clean 4 x 5 rated Easy → +5 kg at 4 x 5. Then DP [D24] | 4 x 8 | +increment, back to 4 x 5 | p.5, p.10 |
 | G1 | Human flag, Day 2 | 6 x 2 s | SEQ: 6x2, 6x3, 5x4, 5x5 | 5 x 5 s | hold | p.8 |
 | M1 | Muscle-up, Block 1 | EMOM 8 x 3 | SEQ: 8x3, 10x3, 8x4, 10x4 | EMOM 10 x 4 | hold | p.9 |
 | M2 | Muscle-up, Block 2 | Total 30, RIR 2 | TOTAL | n/a | n/a | p.9 |
@@ -381,7 +381,7 @@ This is the fastest the engine can move. Real logs will be slower. Read this tab
 | Weighted MU (5 kg step) | +5 4x2 | +5 4x3 | +5 4x4 | +10 4x2 | +10 4x3 | +10 4x4 | +15 4x2 |
 | FL clusters | 6x3 s | 8x3 | 6x4 | 8x4 | 6x5 | 8x5 | 6x6 |
 | FL raises | 3x3 | 4,3,3 | 4,4,3 | 3x4 | 5,4,4 | 5,5,4 | 3x5 |
-| Weighted pull-ups | 4x5 | 6,5,5,5 | 6,6,5,5 | 6,6,6,5 | 4x6 | 7,6,6,6 | 7,7,6,6 |
+| Weighted pull-ups (once calibrated) | 4x5 | 6,5,5,5 | 6,6,5,5 | 6,6,6,5 | 4x6 | 7,6,6,6 | 7,7,6,6 |
 | Flag (Day 2) | 6x2 s | 6x3 | 5x4 | 5x5 | 5x5 | 5x5 | 5x5 |
 | Muscle-up EMOM | 8x3 | 10x3 | 8x4 | 10x4 | 10x4 | 10x4 | 10x4 |
 | One-leg FL (per leg) | 4x8 s | 4x9 | 4x10 | 4x11 | 4x12 | 4x13 | 4x14 |
@@ -447,7 +447,7 @@ They don't reset other lines.
 | Abs A (Day 1) | `declineCrunch` | Weighted decline crunch or sit-up | 3 x 8 to 12 | Plate on chest, start at 5 kg | 60 s | DP 3x8 → 3x12, then +5 kg, back to 3x8 [D37] |
 | Abs A (Day 1) | `legRaise` | Strict hanging leg raise | 3 x 8 to 12 | No swing, toes to bar when possible | 60 s | DP 3x8 → 3x12, then the next variation at 3x8 [D38] |
 | Abs B (Day 4) | `dragonFlagNeg` | Dragon flag negatives | 3 x 5, 5 s down | Full dragon flags once negatives are easy | 60 s | fixed; a clean session rated Easy switches to full dragon flags 3x3 → 3x5 [D39 ⚑] |
-| Abs B (Day 4) | `abWheel` | Ab wheel rollout (if you have one) | 2 x 8 to 12 | Knees first, then standing | 60 s | DP 2x8 → 2x12 knees, then standing 2x8 → 2x12 [D40] |
+| Abs B (Day 4) | `abWheel` | Ab wheel rollout (if you have one; you don't, so it's off by default [D57]) | 2 x 8 to 12 | Knees first, then standing | 60 s | DP 2x8 → 2x12 knees, then standing 2x8 → 2x12 [D40] |
 | Abs C (Day 6) | `lSit` | L-sit or V-sit compression | 4 x 10 to 15 s | Supports handstand and press work | 60 s | +1 s per set, 4x10 → 4x15 s, then V-sit 4x10 → 4x15 s [D41] |
 | Abs C (Day 6) | `weightedCrunch` | Weighted crunch | 3 x 10 to 15 | Plate on chest (start 5 kg [D37]) | 60 s | DP 3x10 → 3x15, then +5 kg, back to 3x10 |
 
@@ -455,7 +455,7 @@ Rules (p.11):
 - "Double progression: when all sets reach the top of the rep range, add load (5 kg to 10 kg) or move to a harder variation."
 - "Leg raise progression: hanging knee raise, strict leg raise, toes to bar, then slower negatives." The table starts at strict leg raise.
 - "Obliques are already trained hard by the flag, so no extra oblique work is needed."
-- Hard sets per week: 3 + 3 + 3 + 2 + 3 = 14. L-sit compression is not counted as a hypertrophy set. Without an ab wheel: 12. Both fit 10 to 14.
+- Hard sets per week: 3 + 3 + 3 + 2 + 3 = 14. L-sit compression is not counted as a hypertrophy set. Without an ab wheel (your setup): 12. Both fit 10 to 14.
 - Abs progress normally in deload and test weeks [D42].
 
 ---
@@ -523,7 +523,9 @@ Due once per cycle week, after Day 7 (or on the first open after it).
 | Parallettes | Optional | Wrist comfort for planche and 90 degree work | cue only |
 | Pull-up bar at home | Optional | Muscle-up GTG, pull days independent of the park | MU GTG rows need it |
 
-"Open question: which of the recommended items do you already have? The plan adapts if any are missing." (p.14) This is an open question for you. Also: do you own an ab wheel?
+"Open question: which of the recommended items do you already have? The plan adapts if any are missing." (p.14)
+
+Your answer (2026-10-15): resistance bands, pull-up bar at home, 5 kg plates (smallest increment 5 kg), dumbbells, and a backpack that carries 20 kg. No ab wheel, no dip belt. You flag on one side. [D34] [D57]
 
 ---
 
