@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dev-dist/
+coverage/
+*.local
+.DS_Store
+
+# The source plan PDF stays local only (it has your name on it and the repo
+# may become public for GitHub Pages). PLAN_SPEC.md is the in-repo extraction.
+*.pdf
