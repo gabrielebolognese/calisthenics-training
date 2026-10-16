@@ -5,6 +5,10 @@ coverage/
 *.local
 .DS_Store
 
+# Local Cloudflare runs: secrets for `wrangler pages dev` and its local KV.
+.dev.vars
+.wrangler/
+
 # The source plan PDF stays local only (it has your name on it and the repo
-# may become public for GitHub Pages). PLAN_SPEC.md is the in-repo extraction.
+# is public). PLAN_SPEC.md is the in-repo extraction.
 *.pdf

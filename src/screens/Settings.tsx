@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { DAY_MS, formatDate, positionLabel, type AppCtx } from '../app/context';
-import { downloadText, exportJson, importJson, resetAll } from '../db/exportImport';
+import { backupFileName, exportJson, importJson, resetAll, shareFile } from '../db/exportImport';
 import type { AppSettings } from '../db/schema';
 import { localDate } from '../engine/dates';
 import { screenAwake, type AwakeStatus } from '../player/wakeLock';
 import { Header } from '../ui/Header';
+import { CloudCard, useExportText } from './Backup';
 
 /** Brief §10 Settings. */
 export function SettingsScreen({ ctx, onBack }: { ctx: AppCtx; onBack: () => void }) {
@@ -20,6 +21,7 @@ export function SettingsScreen({ ctx, onBack }: { ctx: AppCtx; onBack: () => voi
   const [msg, setMsg] = useState('');
   const [persisted, setPersisted] = useState<boolean | null>(null);
   const file = useRef<HTMLInputElement>(null);
+  const exportText = useExportText(true, ctx.data);
 
   useEffect(() => screenAwake.subscribe(setAwake), []);
   useEffect(() => {
@@ -170,21 +172,26 @@ export function SettingsScreen({ ctx, onBack }: { ctx: AppCtx; onBack: () => voi
         <div className="small muted">Needs iOS 18.4 or later from the home screen. If it fails, set Auto-Lock to Never while training.</div>
       </div>
 
+      <h2>Cloud backup</h2>
+      <CloudCard localSessions={ctx.data.sessions.length} onRestored={ctx.refresh} />
+
       <h2>Data</h2>
       <div className="card stack">
         <div className="small muted">
-          Everything stays on this phone. Home screen apps keep their own storage: deleting the home screen icon deletes your data, so export
-          a backup now and then.
+          Everything lives on this phone; the cloud backup is a copy. Deleting the home screen icon deletes the phone’s copy.
           {persisted !== null && ` Storage is ${persisted ? 'persistent' : 'not marked persistent yet'}.`}
         </div>
         <button
           className="btn btn-block"
-          onClick={async () => downloadText(`calisthenics-backup-${localDate(ctx.now)}.json`, await exportJson())}
+          onClick={async () => {
+            await shareFile(backupFileName(localDate(ctx.now)), exportText ?? (await exportJson()));
+          }}
         >
-          Export backup (JSON)
+          Export backup file
         </button>
+        <div className="small muted">Opens the share sheet: Save to Files → iCloud Drive.</div>
         <button className="btn btn-block" onClick={() => file.current?.click()}>
-          Import backup
+          Import backup file
         </button>
         <input
           ref={file}

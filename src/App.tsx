@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DAY_MS, newId, useClock, useDev, type AppCtx, type Dev } from './app/context';
+import { cloud, startAutoBackup } from './cloud';
 import { addEvent, finishLive, loadAll, requestPersistence, saveBaselines, saveSettings, type AppData } from './db/repo';
 import type { AppSettings } from './db/schema';
 import { computeToday } from './engine/index';
@@ -46,6 +47,7 @@ export function App() {
           await requestPersistence();
           await refresh();
         }}
+        onRestored={refresh}
       />
     );
   }
@@ -68,6 +70,9 @@ function Shell({ data, refresh, dev }: { data: AppCtx['data']; refresh: () => Pr
   useEffect(() => {
     void requestPersistence();
   }, []);
+
+  // Cloud backup: on open, back in the foreground, back online [A16].
+  useEffect(() => startAutoBackup(), []);
 
   // App updates wait until no session is running.
   useEffect(() => setTraining(playing !== null), [playing]);
@@ -134,6 +139,7 @@ function Shell({ data, refresh, dev }: { data: AppCtx['data']; refresh: () => Pr
     const shifted = offsetMs ? { ...log, startedAt: log.startedAt + offsetMs, finishedAt: log.finishedAt + offsetMs } : log;
     await finishLive(shifted);
     await refresh();
+    void cloud.auto();
     setPlaying(null);
     setOptions({});
     setSummaryId(log.id);

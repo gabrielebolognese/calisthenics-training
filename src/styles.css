@@ -320,6 +320,11 @@ textarea:focus {
   border-radius: 16px;
 }
 
+.btn:disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
 .choice-grid {
   display: grid;
   gap: 12px;
@@ -1743,12 +1748,92 @@ table.sets th {
   color: var(--go);
 }
 
+/* ---------- Cloud backup ---------- */
+
+.cloud-line {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.cloud-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin: 7px 2px 0;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+
+.cloud-line.good .cloud-dot {
+  background: var(--go);
+  box-shadow: 0 0 0 4px rgba(48, 209, 88, 0.16);
+}
+
+.cloud-line.warn .cloud-dot {
+  background: var(--warn);
+  box-shadow: 0 0 0 4px rgba(255, 159, 10, 0.16);
+}
+
+.cloud-line.bad .cloud-dot {
+  background: var(--danger);
+  box-shadow: 0 0 0 4px rgba(255, 69, 58, 0.16);
+}
+
+.cloud-line.busy .cloud-dot {
+  background: var(--cyan);
+  animation: blink 0.9s ease-in-out infinite alternate;
+}
+
+@keyframes blink {
+  to {
+    opacity: 0.25;
+  }
+}
+
+.token-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.token-row input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 16px;
+}
+
+.snap-list > li > button[aria-pressed='true'],
+.snap-list > li > button[aria-pressed='true'] strong {
+  color: var(--go);
+}
+
+.restore-offer {
+  margin: 8px 0 8px;
+}
+
+.restore-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.restore-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: rgba(100, 210, 255, 0.15);
+  color: var(--cyan);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .view,
   .pop,
   .sheet,
   .sheet-backdrop,
-  .orb-go::after {
+  .orb-go::after,
+  .cloud-line.busy .cloud-dot {
     animation: none;
   }
 }

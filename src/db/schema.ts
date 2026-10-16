@@ -27,11 +27,20 @@ export interface LiveRow {
   state: LiveSession;
 }
 
+/** Cloud backup token and status. Never exported or restored, so a backup can't carry its own key. */
+export interface SyncRow {
+  key: 'token' | 'state';
+  value: unknown;
+}
+
 /** GTG ticks for one date: rows × [muscle-up, HSPU]. */
 export interface GtgRow {
   date: LocalDate;
   ticks: boolean[][];
 }
+
+/** Also the schemaVersion written into every snapshot [A15]. */
+export const DB_VERSION = 2;
 
 export class CaliDB extends Dexie {
   kv!: Table<KvRow, string>;
@@ -40,6 +49,7 @@ export class CaliDB extends Dexie {
   events!: Table<EventRow, number>;
   live!: Table<LiveRow, string>;
   gtg!: Table<GtgRow, string>;
+  sync!: Table<SyncRow, string>;
 
   constructor() {
     super('calisthenics');
@@ -51,6 +61,7 @@ export class CaliDB extends Dexie {
       live: 'id',
       gtg: 'date',
     });
+    this.version(DB_VERSION).stores({ sync: 'key' });
   }
 }
 

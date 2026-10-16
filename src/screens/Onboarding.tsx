@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { localDate } from '../engine/dates';
 import type { Baselines } from '../engine/types';
 import { WEEK0 } from '../plan/targets';
+import { RestoreOffer } from './Backup';
 
 type Week0 = Omit<Baselines, 'startDate'>;
 
@@ -17,14 +18,16 @@ const FIELDS: [keyof Week0, string, string][] = [
   ['weightedPullupLoad', 'Weighted pull-ups, starting load', 'kg'],
 ];
 
-/** First launch only: start date, week 0 values, starting pull-up load (brief §10). */
-export function Onboarding({ onDone }: { onDone: (b: Baselines) => void }) {
+/** First launch only: start date, week 0 values, starting pull-up load (brief §10), or a restore from the cloud [A16]. */
+export function Onboarding({ onDone, onRestored }: { onDone: (b: Baselines) => void; onRestored: () => Promise<void> }) {
   const [startDate, setStartDate] = useState(localDate(Date.now()));
   const [v, setV] = useState<Week0>({ ...WEEK0 });
 
   return (
     <div className="screen" style={{ paddingBottom: 40 }}>
       <h1>Calisthenics</h1>
+      <RestoreOffer onRestored={onRestored} />
+      <h2>Start fresh</h2>
       <p className="muted">Your week 0 numbers from the plan. Change any that are wrong, then start.</p>
       <div className="stack">
         <div className="field">

@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from 'react';
-import { formatDate, formatLongDate, positionShort, type AppCtx } from '../app/context';
+import { formatDate, formatLongDate, plural, positionShort, type AppCtx } from '../app/context';
 import { saveCheckin, saveGtg } from '../db/repo';
-import { exportJson, downloadText } from '../db/exportImport';
+import { cloud, useCloud } from '../cloud';
+import { backupFileName, exportJson, shareFile } from '../db/exportImport';
 import { describeTarget } from '../engine/describe';
 import type { Gtg } from '../engine/index';
 import { latestTest, week0Points } from '../engine/results';
@@ -12,6 +13,7 @@ import { Header } from '../ui/Header';
 import { Icon } from '../ui/Icon';
 import { Sheet } from '../ui/Sheet';
 import { Stepper } from '../ui/Stepper';
+import { useExportText } from './Backup';
 
 export function Today({
   ctx,
@@ -30,6 +32,8 @@ export function Today({
   const w = today.walk;
   const cur = w.current;
   const [checkIn, setCheckIn] = useState<number | null>(null);
+  const cv = useCloud();
+  const cloudAlert = cv.hasToken && !cv.busy && (cv.status === 'fewer' || cv.status === 'auth' || cv.status === 'setup');
   const training = w.status === 'due' && cur.kind !== 'off' && today.prescription.lines.length > 0;
   const tomorrow = `Day ${cur.pos.day}, ${cur.kind === 'off' ? 'rest day' : DAYS[cur.pos.day]!.name}`;
 
@@ -39,8 +43,9 @@ export function Today({
       <StreakCard ctx={ctx} training={training} />
       <WeekStrip ctx={ctx} />
 
-      {today.alerts.length > 0 && (
+      {(today.alerts.length > 0 || cloudAlert) && (
         <div className="stack" style={{ marginTop: 16 }}>
+          {cloudAlert && <CloudBanner ctx={ctx} />}
           <Alerts ctx={ctx} onCheckIn={setCheckIn} />
         </div>
       )}
@@ -273,8 +278,27 @@ function Banner({ title, text, tone, actions }: { title: string; text?: string; 
   );
 }
 
+/** Only the cloud states that need you; offline and retries stay quiet [A17]. */
+function CloudBanner({ ctx }: { ctx: AppCtx }) {
+  const v = useCloud();
+  const open: [string, () => void][] = [['Open settings', ctx.openSettings]];
+  if (v.status === 'fewer') {
+    return (
+      <Banner
+        tone="warn"
+        title="Cloud backup paused"
+        text={`This phone has ${plural(v.localSessions ?? 0, 'session')}, the backup has ${plural(v.cloudSessions ?? 0, 'session')}, so it wasn’t replaced. Choose which to keep.`}
+        actions={open}
+      />
+    );
+  }
+  if (v.status === 'auth') return <Banner tone="warn" title="Cloud backup token rejected" text="Paste the token again in Settings." actions={open} />;
+  return <Banner tone="warn" title="Cloud backup isn’t working" text={v.message} actions={open} />;
+}
+
 function Alerts({ ctx, onCheckIn }: { ctx: AppCtx; onCheckIn: (weekSeq: number) => void }) {
   const { now, today } = ctx;
+  const exportText = useExportText(today.alerts.some((a) => a.kind === 'backup'), ctx.data);
   const dismiss = (what: 'deload' | 'longBreak' | 'unlock' | 'backup' | 'checkIn') => ctx.addEvent({ type: 'dismiss', at: now, what });
   return (
     <>
@@ -329,11 +353,10 @@ function Alerts({ ctx, onCheckIn }: { ctx: AppCtx; onCheckIn: (weekSeq: number) 
                 actions={[
                   [
                     'Export',
-                    () =>
-                      void exportJson().then((j) => {
-                        downloadText(`calisthenics-backup-${today.date}.json`, j);
-                        return dismiss('backup');
-                      }),
+                    async () => {
+                      const r = await shareFile(backupFileName(today.date), exportText ?? (await exportJson()));
+                      if (r !== 'cancelled') await dismiss('backup');
+                    },
                   ],
                   ['Not now', () => void dismiss('backup')],
                 ]}
@@ -479,6 +502,7 @@ function CheckInSheet({ ctx, weekSeq, onClose }: { ctx: AppCtx; weekSeq: number;
       notes: notes.trim() || undefined,
     });
     await ctx.refresh();
+    void cloud.auto();
     onClose();
   };
 

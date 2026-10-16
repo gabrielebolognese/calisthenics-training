@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AppData } from '../db/repo';
 import type { AppSettings } from '../db/schema';
+import { localDate } from '../engine/dates';
 import { blockOf } from '../plan/blocks';
 import { DAYS } from '../plan/sessions';
 import type { Today } from '../engine/index';
@@ -136,3 +137,14 @@ export function formatSeconds(s: number): string {
 }
 
 export const formatInt = (n: number) => Math.round(n).toLocaleString();
+
+/** A moment, as a person says it: "today at 14:32", "yesterday at 09:10", "Thu 16 Oct, 14:32". */
+export function formatWhen(ms: number, now = Date.now()): string {
+  const time = new Date(ms).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  const day = localDate(ms);
+  if (day === localDate(now)) return `today at ${time}`;
+  if (day === localDate(now - DAY_MS)) return `yesterday at ${time}`;
+  return `${formatDate(day)}, ${time}`;
+}
+
+export const plural = (n: number, one: string, many = `${one}s`) => `${formatInt(n)} ${n === 1 ? one : many}`;
