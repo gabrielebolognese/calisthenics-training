@@ -2,11 +2,14 @@
 import { useSyncExternalStore } from 'react';
 import { importSnapshot, makeSnapshot } from '../db/exportImport';
 import { db } from '../db/schema';
+import { SUPABASE_KEY, SUPABASE_URL } from './config';
 import { Cloud, type CloudState, type CloudView } from './core';
 
 export { CloudError, type CloudView, type SnapshotInfo } from './core';
 
 export const cloud = new Cloud({
+  url: SUPABASE_URL,
+  key: SUPABASE_KEY,
   fetch: (url, init) => fetch(url, init),
   load: async () => {
     const [token, state] = await Promise.all([db.sync.get('token'), db.sync.get('state')]);

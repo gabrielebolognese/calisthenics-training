@@ -1,44 +1,53 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { list, onRequest, type Env, type KV } from '../../../functions/api/backup';
+import { PGlite } from '@electric-sql/pglite';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import setupSql from '../../../supabase/setup.sql?raw';
 import type { Snapshot } from '../../db/exportImport';
 import { Cloud, type CloudState } from '../core';
 
-/** In-memory Workers KV. Lists come in pages of 7 so pagination gets exercised. */
-class FakeKV implements KV {
-  m = new Map<string, { value: string; metadata: unknown }>();
-  async get(key: string) {
-    return this.m.get(key)?.value ?? null;
-  }
-  async getWithMetadata<M>(key: string) {
-    const e = this.m.get(key);
-    return { value: e?.value ?? null, metadata: (e?.metadata ?? null) as M | null };
-  }
-  async put(key: string, value: string, options?: { metadata?: unknown }) {
-    this.m.set(key, { value, metadata: options?.metadata ?? null });
-  }
-  async delete(key: string) {
-    this.m.delete(key);
-  }
-  async list<M>({ prefix = '', cursor }: { prefix?: string; cursor?: string } = {}) {
-    const names = [...this.m.keys()].filter((k) => k.startsWith(prefix)).sort();
-    const start = Number(cursor ?? 0);
-    const end = start + 7;
-    return {
-      keys: names.slice(start, end).map((name) => ({ name, metadata: this.m.get(name)!.metadata as M })),
-      list_complete: end >= names.length,
-      cursor: end >= names.length ? undefined : String(end),
-    };
+// supabase/setup.sql runs in PGlite (real Postgres). `rpc` stands in for Supabase's Data API:
+// POST /rest/v1/rpc/<fn> with named JSON arguments, run as the public `anon` role.
+const URL_ = 'https://test.supabase.co';
+const KEY = 'sb_publishable_test';
+const TYPES: Record<string, string> = { p_token: 'text', p_key: 'text', p_snapshot: 'json', p_confirm_fewer: 'boolean' };
+
+let pg: PGlite;
+let TOKEN: string;
+
+async function as<T>(role: 'anon', fn: () => Promise<T>): Promise<T> {
+  await pg.exec(`set role ${role}`);
+  try {
+    return await fn();
+  } finally {
+    await pg.exec('reset role');
   }
 }
 
-const TOKEN = 'test-token-0123456789abcdef';
+const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
-function server(env: Env) {
-  return async (url: string, init: RequestInit = {}): Promise<Response> => {
-    const request = new Request(new URL(url, 'https://app.test'), init);
-    return new URL(request.url).pathname === '/api/backup/list' ? list({ request, env }) : onRequest({ request, env });
-  };
+async function rpc(url: string, init: RequestInit): Promise<Response> {
+  const m = /^https:\/\/test\.supabase\.co\/rest\/v1\/rpc\/(\w+)$/.exec(url);
+  if (init.method !== 'POST' || !m) return reply({ message: 'Not found' }, 404);
+  if ((init.headers as Record<string, string>).apikey !== KEY) return reply({ message: 'Invalid API key' }, 401);
+  const args = JSON.parse(init.body as string) as Record<string, unknown>;
+  const names = Object.keys(args);
+  const sql = `select public.${m[1]}(${names.map((n, i) => `${n} => $${i + 1}::${TYPES[n]}`).join(', ')}) as r`;
+  const params = names.map((n) => (TYPES[n] === 'json' ? JSON.stringify(args[n]) : args[n]));
+  try {
+    const r = await as('anon', () => pg.query<{ r: unknown }>(sql, params));
+    return reply(r.rows[0]!.r);
+  } catch (e) {
+    const message = (e as Error).message;
+    return /does not exist/.test(message) ? reply({ code: 'PGRST202', message }, 404) : reply({ message }, 400);
+  }
 }
+
+const call = async (fn: string, args: Record<string, unknown>) =>
+  (await (await rpc(`${URL_}/rest/v1/rpc/${fn}`, { method: 'POST', headers: { apikey: KEY }, body: JSON.stringify(args) })).json()) as Record<
+    string,
+    unknown
+  >;
+const put = (snapshot: unknown, extra: Record<string, unknown> = {}, token = TOKEN) => call('backup_put', { p_token: token, p_snapshot: snapshot, ...extra });
+const list = async () => (await call('backup_list', { p_token: TOKEN })) as { latest: string | null; snapshots: { key: string; at: string; sessions: number }[] };
 
 const snap = (sessions: number, schemaVersion = 2): Snapshot =>
   ({
@@ -52,109 +61,85 @@ const snap = (sessions: number, schemaVersion = 2): Snapshot =>
     gtg: [],
   }) as unknown as Snapshot;
 
-const auth = (token = TOKEN) => ({ Authorization: `Bearer ${token}` });
-const put = (f: ReturnType<typeof server>, body: unknown, q = '', token = TOKEN) =>
-  f(`/api/backup${q}`, { method: 'PUT', headers: auth(token), body: typeof body === 'string' ? body : JSON.stringify(body) });
-const getList = async (f: ReturnType<typeof server>) =>
-  (await (await f('/api/backup/list', { headers: auth() })).json()) as { latest: string | null; snapshots: { key: string; sessions: number }[] };
-
-beforeEach(() => {
-  vi.useFakeTimers({ toFake: ['Date'] });
-  vi.setSystemTime(new Date('2026-10-16T10:00:00.000Z'));
+beforeAll(async () => {
+  pg = await PGlite.create();
+  // What a Supabase project already has: the API roles, allowed into the public schema.
+  await pg.exec('create role anon nologin; create role authenticated nologin; grant usage on schema public to anon, authenticated;');
+  const out = await pg.exec(setupSql);
+  TOKEN = out.at(-1)!.rows[0]!.backup_token as string;
 });
-afterEach(() => vi.useRealTimers());
-const tick = () => vi.setSystemTime(Date.now() + 1000);
+afterAll(() => pg.close());
+beforeEach(() => pg.exec('delete from cali.backups'));
 
-describe('backup function', () => {
-  it('rejects a missing or wrong token, and says what setup is missing', async () => {
-    const f = server({ BACKUPS: new FakeKV(), BACKUP_TOKEN: TOKEN });
-    expect((await f('/api/backup')).status).toBe(401);
-    expect((await f('/api/backup', { headers: auth('wrong-token-wrong-token') })).status).toBe(401);
-    expect((await f('/api/backup', { headers: { Authorization: TOKEN } })).status).toBe(401);
-    expect((await put(f, snap(1), '', 'nope')).status).toBe(401);
-
-    expect((await server({ BACKUPS: new FakeKV() })('/api/backup', { headers: auth() })).status).toBe(503);
-    expect((await server({ BACKUPS: new FakeKV(), BACKUP_TOKEN: 'short' })('/api/backup', { headers: auth('short') })).status).toBe(503);
-    const noKv = await server({ BACKUP_TOKEN: TOKEN })('/api/backup', { headers: auth() });
-    expect(noKv.status).toBe(503);
-    expect(((await noKv.json()) as { message: string }).message).toMatch(/BACKUPS/);
+describe('supabase/setup.sql', () => {
+  it('makes a long random token, and running it again keeps it', async () => {
+    expect(TOKEN).toMatch(/^[0-9a-f]{64}$/);
+    const again = await pg.exec(setupSql);
+    expect(again.at(-1)!.rows[0]!.backup_token).toMatch(/^Already set up/);
+    expect((await put(snap(1))).sessions).toBe(1);
+    const stored = await pg.query<{ token_hash: string }>('select token_hash from cali.config');
+    expect(stored.rows[0]!.token_hash).not.toContain(TOKEN);
   });
 
-  it('stores a snapshot as snap:<time> and as latest, and reads either back', async () => {
-    const kv = new FakeKV();
-    const f = server({ BACKUPS: kv, BACKUP_TOKEN: TOKEN });
-    expect((await f('/api/backup', { headers: auth() })).status).toBe(404);
-
-    const body = JSON.stringify(snap(3));
-    const res = await put(f, body);
-    expect(res.status).toBe(201);
-    const r = (await res.json()) as { key: string; sessions: number; schemaVersion: number };
-    expect(r).toMatchObject({ key: 'snap:2026-10-16T10:00:00.000Z', sessions: 3, schemaVersion: 2 });
-
-    const latest = await f('/api/backup', { headers: auth() });
-    expect(latest.headers.get('Content-Type')).toMatch(/application\/json/);
-    expect(latest.headers.get('Cache-Control')).toBe('no-store');
-    expect(await latest.text()).toBe(body);
-    expect(await (await f(`/api/backup?key=${encodeURIComponent(r.key)}`, { headers: auth() })).text()).toBe(body);
-    expect((await f('/api/backup?key=settings', { headers: auth() })).status).toBe(400);
-    expect((await f('/api/backup?key=snap:2020-01-01T00:00:00.000Z', { headers: auth() })).status).toBe(404);
-
-    tick();
-    await put(f, snap(4));
-    const l = await getList(f);
-    expect(l.snapshots.map((s) => [s.key, s.sessions])).toEqual([
-      ['snap:2026-10-16T10:00:01.000Z', 4],
-      ['snap:2026-10-16T10:00:00.000Z', 3],
-    ]);
-    expect(l.latest).toBe('snap:2026-10-16T10:00:01.000Z');
+  it('keeps the tables and the token out of reach of the public key', async () => {
+    await expect(as('anon', () => pg.query('select * from cali.backups'))).rejects.toThrow(/permission denied/);
+    await expect(as('anon', () => pg.query('select * from cali.config'))).rejects.toThrow(/permission denied/);
+    await expect(as('anon', () => pg.query('select cali.new_token()'))).rejects.toThrow(/permission denied/);
+    expect(await call('backup_list', { p_token: 'wrong' })).toMatchObject({ error: 'auth' });
+    expect(await call('backup_get', { p_token: '' })).toMatchObject({ error: 'auth' });
+    expect(await put(snap(1), {}, `${TOKEN}x`)).toMatchObject({ error: 'auth' });
+    expect((await list()).snapshots).toHaveLength(0);
   });
 
-  it('refuses to replace latest with fewer sessions unless confirmed, and stores nothing when it refuses', async () => {
-    const kv = new FakeKV();
-    const f = server({ BACKUPS: kv, BACKUP_TOKEN: TOKEN });
-    await put(f, snap(5));
-    tick();
-    const res = await put(f, snap(2));
-    expect(res.status).toBe(409);
-    expect(await res.json()).toMatchObject({ error: 'fewer', cloud: 5, incoming: 2 });
-    expect((await getList(f)).snapshots).toHaveLength(1);
-    expect(JSON.parse((await kv.get('latest'))!).sessions).toHaveLength(5);
+  it('stores a snapshot and gives it back exactly, as the latest or by key', async () => {
+    expect(await call('backup_get', { p_token: TOKEN })).toMatchObject({ error: 'none' });
+    const first = snap(3);
+    const r = await put(first);
+    expect(r).toMatchObject({ sessions: 3, schemaVersion: 2 });
+    expect(r.key).toMatch(/^snap:\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z$/);
+    expect(Date.parse(r.at as string)).toBeGreaterThan(Date.now() - 60_000);
 
-    expect((await put(f, snap(5))).status).toBe(201); // the same count is fine
-    tick();
-    expect((await put(f, snap(2), '?confirm=fewer')).status).toBe(201);
-    expect(JSON.parse((await kv.get('latest'))!).sessions).toHaveLength(2);
-    expect((await getList(f)).snapshots.map((s) => s.sessions)).toEqual([2, 5, 5]);
+    expect(await call('backup_get', { p_token: TOKEN })).toEqual({ snapshot: first });
+    await put(snap(4));
+    expect(((await call('backup_get', { p_token: TOKEN })).snapshot as Snapshot).sessions).toHaveLength(4);
+    expect(await call('backup_get', { p_token: TOKEN, p_key: r.key })).toEqual({ snapshot: first });
+    expect(await call('backup_get', { p_token: TOKEN, p_key: 'snap:nope' })).toMatchObject({ error: 'none' });
+
+    const l = await list();
+    expect(l.snapshots.map((s) => s.sessions)).toEqual([4, 3]);
+    expect(l.latest).toBe(l.snapshots[0]!.key);
+  });
+
+  it('refuses to replace the latest with fewer sessions unless confirmed, and stores nothing when it refuses', async () => {
+    await put(snap(5));
+    expect(await put(snap(2))).toMatchObject({ error: 'fewer', cloud: 5, incoming: 2 });
+    expect((await list()).snapshots.map((s) => s.sessions)).toEqual([5]);
+
+    expect((await put(snap(5))).error).toBeUndefined(); // the same count is fine
+    expect((await put(snap(2), { p_confirm_fewer: true })).sessions).toBe(2);
+    expect((await list()).snapshots.map((s) => s.sessions)).toEqual([2, 5, 5]);
   });
 
   it('keeps the 20 newest snapshots', async () => {
-    const kv = new FakeKV();
-    const f = server({ BACKUPS: kv, BACKUP_TOKEN: TOKEN });
-    for (let i = 0; i < 23; i++) {
-      tick();
-      expect((await put(f, snap(i))).status).toBe(201);
-    }
-    const l = await getList(f);
+    for (let i = 0; i < 23; i++) expect((await put(snap(i))).sessions).toBe(i);
+    const l = await list();
     expect(l.snapshots).toHaveLength(20);
     expect(l.snapshots[0]!.sessions).toBe(22);
     expect(l.snapshots.at(-1)!.sessions).toBe(3);
-    expect(l.latest).toBe(l.snapshots[0]!.key);
-    expect([...kv.m.keys()].filter((k) => !k.startsWith('snap:'))).toEqual(['latest']);
   });
 
-  it('rejects bodies that are not snapshots, too large, or the wrong method', async () => {
-    const f = server({ BACKUPS: new FakeKV(), BACKUP_TOKEN: TOKEN });
-    expect((await put(f, 'not json')).status).toBe(400);
-    expect((await put(f, { format: 'other', schemaVersion: 2, sessions: [] })).status).toBe(400);
-    expect((await put(f, { format: 'calisthenics-backup', sessions: [] })).status).toBe(400);
-    expect((await put(f, { ...snap(1), pad: 'x'.repeat(5_000_001) })).status).toBe(413);
-    expect((await f('/api/backup', { method: 'POST', headers: auth(), body: '{}' })).status).toBe(405);
-    expect((await f('/api/backup/list', { method: 'DELETE', headers: auth() })).status).toBe(405);
+  it('rejects anything that is not a snapshot', async () => {
+    expect(await put('text')).toMatchObject({ error: 'format' });
+    expect(await put({ format: 'other', schemaVersion: 2, sessions: [] })).toMatchObject({ error: 'format' });
+    expect(await put({ format: 'calisthenics-backup', sessions: [] })).toMatchObject({ error: 'format' });
+    expect(await put({ format: 'calisthenics-backup', schemaVersion: 2, sessions: {} })).toMatchObject({ error: 'format' });
+    expect(await put({ ...snap(1), pad: 'x'.repeat(5_000_001) })).toMatchObject({ error: 'size' });
+    expect((await list()).snapshots).toHaveLength(0);
   });
 });
 
 describe('cloud client', () => {
-  function phone(fetch: (url: string, init: RequestInit) => Promise<Response>, opts: { token?: string | null; sessions?: number | null } = {}) {
+  function phone(fetch: (url: string, init: RequestInit) => Promise<Response>, opts: { token?: string | null; sessions?: number | null; url?: string } = {}) {
     const p = {
       local: opts.sessions === null ? null : snap(opts.sessions ?? 3),
       saved: { token: opts.token === undefined ? TOKEN : opts.token, state: null as CloudState | null },
@@ -163,8 +148,10 @@ describe('cloud client', () => {
       cloud: null as unknown as Cloud,
     };
     p.cloud = new Cloud({
+      url: opts.url ?? URL_,
+      key: KEY,
       fetch: async (url, init) => {
-        p.calls.push(`${init.method ?? 'GET'} ${url}`);
+        p.calls.push(url.split('/').at(-1)!);
         return fetch(url, init);
       },
       load: async () => ({ token: p.saved.token, state: p.saved.state }),
@@ -187,17 +174,15 @@ describe('cloud client', () => {
     });
     return p;
   }
-  const puts = (p: { calls: string[] }) => p.calls.filter((c) => c.startsWith('PUT')).length;
+  const puts = (p: { calls: string[] }) => p.calls.filter((c) => c === 'backup_put').length;
 
   it('backs up, then sends again only when the data changed', async () => {
-    const f = server({ BACKUPS: new FakeKV(), BACKUP_TOKEN: TOKEN });
-    const p = phone(f);
+    const p = phone(rpc);
     await p.cloud.auto();
     expect(puts(p)).toBe(1);
     expect(p.cloud.getView()).toMatchObject({ status: 'ok', lastSessions: 3, hasToken: true, busy: false });
-    expect(p.saved.state?.lastAt).toBe(Date.parse('2026-10-16T10:00:00.000Z'));
+    expect(p.saved.state?.lastAt).toBe(Date.parse((await list()).snapshots[0]!.at));
 
-    tick();
     await p.cloud.auto(); // reopening the app with nothing new
     expect(puts(p)).toBe(1);
 
@@ -209,40 +194,33 @@ describe('cloud client', () => {
   });
 
   it('never backs up an empty phone, and does nothing without a token', async () => {
-    const f = server({ BACKUPS: new FakeKV(), BACKUP_TOKEN: TOKEN });
-    const empty = phone(f, { sessions: null });
+    const empty = phone(rpc, { sessions: null });
     await empty.cloud.auto();
     await empty.cloud.backupNow();
     expect(empty.calls).toEqual([]);
 
-    const off = phone(f, { token: null });
+    const off = phone(rpc, { token: null });
     await off.cloud.auto();
     expect(off.calls).toEqual([]);
     expect(off.cloud.getView()).toMatchObject({ status: 'off', hasToken: false, loaded: true });
   });
 
   it('pauses instead of replacing a backup that has more sessions, until you confirm', async () => {
-    const kv = new FakeKV();
-    const f = server({ BACKUPS: kv, BACKUP_TOKEN: TOKEN });
-    await put(f, snap(30));
-    tick();
-
-    const p = phone(f, { sessions: 2 });
+    await put(snap(30));
+    const p = phone(rpc, { sessions: 2 });
     await p.cloud.auto();
     expect(p.cloud.getView()).toMatchObject({ status: 'fewer', cloudSessions: 30, localSessions: 2 });
-    expect(JSON.parse((await kv.get('latest'))!).sessions).toHaveLength(30);
+    expect((await list()).snapshots.map((s) => s.sessions)).toEqual([30]);
     expect(p.timers).toHaveLength(0);
 
     await p.cloud.replaceCloud();
     expect(p.cloud.getView()).toMatchObject({ status: 'ok', lastSessions: 2 });
-    expect(JSON.parse((await kv.get('latest'))!).sessions).toHaveLength(2);
-    expect((await getList(f)).snapshots.map((s) => s.sessions)).toEqual([2, 30]);
+    expect((await list()).snapshots.map((s) => s.sessions)).toEqual([2, 30]);
   });
 
   it('retries quietly after a network failure', async () => {
-    const f = server({ BACKUPS: new FakeKV(), BACKUP_TOKEN: TOKEN });
     let online = false;
-    const p = phone((url, init) => (online ? f(url, init) : Promise.reject(new TypeError('Load failed'))));
+    const p = phone((url, init) => (online ? rpc(url, init) : Promise.reject(new TypeError('Load failed'))));
     await p.cloud.auto();
     expect(p.cloud.getView().status).toBe('offline');
     expect(p.timers.map((t) => t.ms)).toEqual([30_000]);
@@ -256,18 +234,22 @@ describe('cloud client', () => {
     expect(p.timers).toHaveLength(0);
   });
 
-  it('reports a rejected token and an address without the API', async () => {
-    const f = server({ BACKUPS: new FakeKV(), BACKUP_TOKEN: TOKEN });
-    const wrong = phone(f, { token: 'some-other-token-123456' });
+  it('reports a rejected token, a missing setup, and an app not connected yet', async () => {
+    const wrong = phone(rpc, { token: 'some-other-token' });
     await wrong.cloud.auto();
     expect(wrong.cloud.getView().status).toBe('auth');
     expect(wrong.timers).toHaveLength(0);
 
-    const html = phone(async () => new Response('<!doctype html>', { status: 404, headers: { 'Content-Type': 'text/html' } }));
-    await html.cloud.auto();
-    expect(html.cloud.getView()).toMatchObject({ status: 'setup', message: 'There is no backup server at this address.' });
+    const missing = phone(async () => reply({ code: 'PGRST202', message: 'Could not find the function' }, 404));
+    await missing.cloud.auto();
+    expect(missing.cloud.getView()).toMatchObject({ status: 'setup', message: expect.stringMatching(/setup\.sql/) });
 
-    const fresh = phone(f, { token: null });
+    const unconnected = phone(rpc, { url: '' });
+    await unconnected.cloud.auto();
+    expect(unconnected.calls).toEqual([]);
+    expect(unconnected.cloud.getView()).toMatchObject({ status: 'setup', message: expect.stringMatching(/isn’t connected/) });
+
+    const fresh = phone(rpc, { token: null });
     await fresh.cloud.setToken(`  ${TOKEN}  `);
     expect(fresh.saved.token).toBe(TOKEN);
     await fresh.cloud.auto();
@@ -275,12 +257,10 @@ describe('cloud client', () => {
   });
 
   it('restores the latest or an older snapshot onto the phone, without sending it straight back', async () => {
-    const f = server({ BACKUPS: new FakeKV(), BACKUP_TOKEN: TOKEN });
-    await put(f, snap(10));
-    tick();
-    await put(f, snap(12));
+    await put(snap(10));
+    await put(snap(12));
 
-    const p = phone(f, { sessions: null });
+    const p = phone(rpc, { sessions: null });
     const found = await p.cloud.list();
     expect(found.map((s) => [s.sessions, s.latest])).toEqual([
       [12, true],
@@ -297,9 +277,8 @@ describe('cloud client', () => {
   });
 
   it('refuses a snapshot from a newer version of the app', async () => {
-    const f = server({ BACKUPS: new FakeKV(), BACKUP_TOKEN: TOKEN });
-    await put(f, snap(4, 99));
-    const p = phone(f, { sessions: 1 });
+    await put(snap(4, 99));
+    const p = phone(rpc, { sessions: 1 });
     await expect(p.cloud.restore()).rejects.toThrow(/newer version/);
     expect(p.local!.sessions).toHaveLength(1);
   });

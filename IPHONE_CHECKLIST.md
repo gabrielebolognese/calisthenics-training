@@ -1,7 +1,7 @@
 # iPhone checklist
 
 Manual tests to run on the phone (brief §15). The app lives at
-**https://calisthenics-training.pages.dev**, or whatever address Cloudflare gave the project (DEPLOY.md, step 2). Do the Cloudflare setup in DEPLOY.md first, and move your data over from the old GitHub address as described there. Note the result next to each line. Anything that fails goes back to me with what you saw.
+**https://gabrielebolognese.github.io/calisthenics-training/**. For the cloud backup items, do the Supabase setup in DEPLOY.md first. Note the result next to each line. Anything that fails goes back to me with what you saw.
 
 The wake lock needs iOS 18.4 or later when launched from the home screen.
 

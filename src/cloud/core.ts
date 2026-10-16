@@ -1,6 +1,6 @@
-// Cloud backup client (DECISIONS A12–A17): sends snapshots to /api/backup, keeps the status, retries.
-// IndexedDB stays the only store the app reads from; the cloud is a copy.
-import { parseSnapshot, snapshotData, type Snapshot } from '../db/exportImport';
+// Cloud backup client (DECISIONS A12–A17): sends snapshots to the Supabase functions in supabase/setup.sql,
+// keeps the status, retries. IndexedDB stays the only store the app reads from; the cloud is a copy.
+import { checkSnapshot, snapshotData, type Snapshot } from '../db/exportImport';
 
 export type CloudStatus =
   | 'off' // no token
@@ -10,7 +10,7 @@ export type CloudStatus =
   | 'error' // server error: retrying
   | 'auth' // token rejected
   | 'fewer' // the cloud has more sessions than this phone: waiting for a confirm
-  | 'setup'; // no backup server here, or it isn't configured
+  | 'setup'; // Supabase isn't connected or set up
 
 export interface CloudState {
   status: CloudStatus;
@@ -41,6 +41,9 @@ export interface SnapshotInfo {
 }
 
 export interface CloudDeps {
+  /** The Supabase project URL and its publishable (anon) key: public by design (src/cloud/config.ts). */
+  url: string;
+  key: string;
   fetch: (url: string, init: RequestInit) => Promise<Response>;
   load(): Promise<{ token: string | null; state: CloudState | null }>;
   saveToken(token: string | null): Promise<void>;
@@ -66,7 +69,6 @@ export class CloudError extends Error {
   }
 }
 
-const API = '/api/backup';
 const RETRY_FIRST = 30_000;
 const RETRY_MAX = 10 * 60_000;
 
@@ -134,16 +136,15 @@ export class Cloud {
 
   async list(): Promise<SnapshotInfo[]> {
     await this.init();
-    const res = await this.call(`${API}/list`);
-    const body = (await res.json()) as { latest: string | null; snapshots: { key: string; at: string; sessions: number | null }[] };
+    const body = await this.rpc<{ latest: string | null; snapshots: { key: string; at: string; sessions: number | null }[] }>('backup_list', {});
     return body.snapshots.map((s) => ({ key: s.key, at: s.at, sessions: s.sessions, latest: s.key === body.latest }));
   }
 
   /** Replaces everything on the phone with the snapshot (the latest when no key). Returns its session count. */
   async restore(key?: string): Promise<number> {
     await this.init();
-    const res = await this.call(key ? `${API}?key=${encodeURIComponent(key)}` : API);
-    const snap = parseSnapshot(await res.text());
+    const body = await this.rpc<{ snapshot: unknown }>('backup_get', key ? { p_key: key } : {});
+    const snap = checkSnapshot(body.snapshot);
     return this.serial(async () => {
       await this.deps.replace(snap);
       this.stopRetry();
@@ -190,8 +191,7 @@ export class Cloud {
 
     this.setBusy(true);
     try {
-      const res = await this.call(force ? `${API}?confirm=fewer` : API, { method: 'PUT', body: JSON.stringify(snap) });
-      const r = (await res.json()) as { at: string; sessions: number };
+      const r = await this.rpc<{ at: string; sessions: number }>('backup_put', { p_snapshot: snap, ...(force ? { p_confirm_fewer: true } : {}) });
       this.stopRetry();
       await this.save({ status: 'ok', lastAt: Date.parse(r.at), lastSessions: r.sessions, lastHash: hash });
     } catch (e) {
@@ -211,31 +211,38 @@ export class Cloud {
     }
   }
 
-  private async call(path: string, init: RequestInit = {}): Promise<Response> {
+  /** POST /rest/v1/rpc/<fn>. The functions answer { error } instead of HTTP errors, so both are mapped here. */
+  private async rpc<T>(fn: 'backup_put' | 'backup_get' | 'backup_list', args: Record<string, unknown>): Promise<T> {
+    const { url, key } = this.deps;
+    if (!url || !key) throw new CloudError('setup', 'The app isn’t connected to a Supabase project yet.');
     if (!this.token) throw new CloudError('auth', 'No backup token.');
     let res: Response;
     try {
-      res = await this.deps.fetch(path, {
-        ...init,
+      res = await this.deps.fetch(`${url.replace(/\/+$/, '')}/rest/v1/rpc/${fn}`, {
+        method: 'POST',
         cache: 'no-store',
-        headers: { Authorization: `Bearer ${this.token}`, ...(init.body ? { 'Content-Type': 'application/json' } : {}) },
+        // Legacy anon keys are JWTs and go in Authorization too; the newer sb_publishable_ keys must not.
+        headers: { apikey: key, ...(key.startsWith('eyJ') ? { Authorization: `Bearer ${key}` } : {}), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p_token: this.token, ...args }),
       });
     } catch {
       throw new CloudError('offline', 'No connection.');
     }
-    // An HTML page instead of JSON: this address has no backup API (old host, plain dev server).
-    if (!(res.headers.get('Content-Type') ?? '').includes('application/json')) {
-      if (res.status >= 500) throw new CloudError('server', `Server error ${res.status}.`);
-      throw new CloudError('setup', 'There is no backup server at this address.');
+    const body = (await res.json().catch(() => null)) as { error?: unknown; message?: unknown; code?: unknown; cloud?: number; incoming?: number } | null;
+    const message = typeof body?.message === 'string' ? body.message : `Server error ${res.status}.`;
+    if (!res.ok) {
+      if (res.status === 404 || body?.code === 'PGRST202') {
+        throw new CloudError('setup', 'The backup functions are missing: run supabase/setup.sql in the Supabase SQL Editor.');
+      }
+      if (res.status === 401 || res.status === 403) throw new CloudError('setup', 'Supabase refused the app’s key (src/cloud/config.ts).');
+      throw new CloudError('server', message);
     }
-    if (res.ok) return res;
-    const body = (await res.json().catch(() => ({}))) as { message?: string; cloud?: number; incoming?: number };
-    const message = body.message ?? `Server error ${res.status}.`;
-    if (res.status === 401) throw new CloudError('auth', 'The server rejected this token.');
-    if (res.status === 409) throw new CloudError('fewer', message, body);
-    if (res.status === 404) throw new CloudError('none', message);
-    if (res.status === 503) throw new CloudError('setup', message);
-    throw new CloudError('server', message);
+    if (!body || typeof body !== 'object') throw new CloudError('server', 'Unexpected answer from Supabase.');
+    if (body.error === 'auth') throw new CloudError('auth', 'The server rejected this token.');
+    if (body.error === 'fewer') throw new CloudError('fewer', message, body);
+    if (body.error === 'none') throw new CloudError('none', message);
+    if (body.error !== undefined) throw new CloudError('server', message);
+    return body as T;
   }
 
   private retry(): void {

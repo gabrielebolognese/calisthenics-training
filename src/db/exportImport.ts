@@ -33,12 +33,17 @@ export async function exportJson(): Promise<string> {
 
 /** Throws on anything that isn't a backup, or one written by a newer version of the app. */
 export function parseSnapshot(text: string): Snapshot {
-  let data: Partial<Snapshot> | null;
+  let data: unknown;
   try {
     data = JSON.parse(text);
   } catch {
     data = null;
   }
+  return checkSnapshot(data);
+}
+
+export function checkSnapshot(value: unknown): Snapshot {
+  const data = value as Partial<Snapshot> | null;
   if (data?.format !== FORMAT || !Array.isArray(data.sessions)) throw new Error('This is not a Calisthenics backup.');
   const schemaVersion = data.schemaVersion ?? 1;
   if (typeof schemaVersion !== 'number' || schemaVersion > DB_VERSION) {

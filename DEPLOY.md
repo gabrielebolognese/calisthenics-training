@@ -1,91 +1,63 @@
-# Deploy
+# Deploy and cloud backup
 
-The app runs on **Cloudflare Pages**. Cloudflare serves the static app and runs one Pages Function, `functions/api/backup.ts`, which stores backups in a KV namespace. Once this is set up, every push to `main` builds, tests and deploys on its own. The free plan is enough.
+## The app
 
-The setup below is done once, in the Cloudflare dashboard, and takes about 10 minutes. Dashboard labels move around now and then, so if a name below doesn't match exactly, look for the closest one.
+The app lives on GitHub Pages: **https://gabrielebolognese.github.io/calisthenics-training/**. Every push to `main` runs the tests, then builds and deploys the app (`.github/workflows/deploy.yml`). There's nothing to set up.
 
-## 1. Make a backup token
+## Cloud backup: one-time Supabase setup (about 5 minutes)
 
-The token is the only key to your backups: anyone who has it can read them and write over them. Make a long random one. In PowerShell:
+The backups live in a free Supabase project. Supabase runs a Postgres database for you, and the app reaches it over HTTPS. There are no commands to run and no secrets to type: you paste one SQL file, and it hands you the token.
 
-```powershell
-$b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); -join ($b | % { $_.ToString('x2') })
-```
+### 1. Create the project
 
-That prints 64 characters. Save them in your password manager (for example the Passwords app, as "Calisthenics backup"), because you'll paste the token into the app. The server refuses tokens shorter than 16 characters.
+1. Go to https://supabase.com → **Start your project**, and sign in with GitHub.
+2. Click **New project** and fill in:
+   - Name: `calisthenics`
+   - Database password: click **Generate a password**. You won't need it for the app, but keep it in your password manager.
+   - Region: the closest to you, for example Central EU (Frankfurt).
+   - Plan: Free.
+3. Click **Create new project**, then wait a minute or two until the dashboard says it's ready.
 
-## 2. Create the Pages project
+### 2. Run the setup script and copy your token
 
-1. Log in at https://dash.cloudflare.com, or make a free account first.
-2. **Workers & Pages → Create → Pages → Import an existing Git repository**. Connect GitHub, allow Cloudflare access to `gabrielebolognese/calisthenics-training`, and pick it.
-3. Fill in the build settings:
-   - Project name: `calisthenics-training`. The app will live at `https://calisthenics-training.pages.dev`. If the name is taken, Cloudflare adds a suffix; use whatever address it shows.
-   - Production branch: `main`
-   - Framework preset: `None`
-   - Build command: `npm test && npm run build`. A failing test stops the deploy, as it did on GitHub.
-   - Build output directory: `dist`
-   - Root directory: leave it empty.
-4. **Save and Deploy**. The app works after this first deploy, but its Cloud backup says "Server not set up" until you finish steps 3–5.
+1. Open `supabase/setup.sql` from this repo. On GitHub: open the file → **Raw** → select all → copy.
+2. In Supabase, open **SQL Editor** in the left menu, then **New query**. Paste the script and click **Run**. If Supabase warns that the query has destructive operations, confirm and run it anyway: it only creates the backup tables and functions.
+3. The result is one row, `backup_token`, with 64 characters. That's your backup token. Copy it into your password manager now, because it's shown only this once. Supabase stores only a hash of it.
 
-Node 22 comes from `.node-version`, and Cloudflare finds the `functions/` folder on its own.
+You can run the script again at any time. It keeps your backups and your token, and just says "Already set up".
 
-## 3. Create the KV namespace and bind it
+### 3. Connect the app
 
-1. **Storage & databases → KV → Create**. Name it `calisthenics-backups`.
-2. **Workers & Pages → calisthenics-training → Settings → Bindings → Add → KV namespace**.
-   - Variable name: `BACKUPS`. It must be exactly this.
-   - KV namespace: `calisthenics-backups`
-   - Save it for the **Production** environment.
+In Supabase, go to **Project Settings → API Keys** (sometimes listed under Data API) and copy two values:
 
-## 4. Add the token as a secret
+- the **Project URL**, like `https://abcdefgh.supabase.co`
+- the **publishable key** (`sb_publishable_…`). On older projects it's the **anon public** key instead (a long string starting with `eyJ`).
 
-In **Settings → Variables and Secrets → Add**, choose type **Secret**, name it `BACKUP_TOKEN`, and paste the token from step 1 as the value. Save.
+Both are meant to be public. The database only answers to your backup token, and the app's tables can't be reached with the key alone. Send me the two values, or put them in `src/cloud/config.ts` and push. Either way, the app redeploys with them.
 
-## 5. Redeploy
+### 4. On the iPhone
 
-Bindings and secrets only reach new deployments. Go to **Deployments**, open the menu (⋯) on the latest one, and choose **Retry deployment**.
+Go to **Settings → Cloud backup**, paste the token, and tap **Save token**. The dot turns green and says "Up to date".
 
-## 6. Check it
+## If something's wrong
 
-Open the address in Safari, then **Settings (gear) → Cloud backup**. Paste the token and tap **Save token**. The dot turns green and says "Up to date".
-
-If it says:
-
-- "Server not set up: The KV binding BACKUPS is missing." → step 3, then step 5.
-- "Server not set up: BACKUP_TOKEN is not set…" → step 4, then step 5.
-- "Token rejected" → the token in the app and the secret on Cloudflare don't match.
-
-## Moving your data from GitHub Pages
-
-Each web address has its own storage on the iPhone, so what's in the old app (github.io) doesn't show up at the new address by itself. Move it once:
-
-1. Open the **old** app from its home screen icon. Close it fully and open it again, so it updates to the last GitHub build. That build has the new export.
-2. In the old app, go to **Settings → Export backup file**. In the share sheet, tap **Save to Files** and choose iCloud Drive.
-3. In Safari, open the new address, then **Share → Add to Home Screen**.
-4. Open the new app. On the first screen, tap **Import a backup file instead** and pick the file from iCloud Drive. Today and Logs show your data again.
-5. **Settings → Cloud backup**: paste the token and tap **Save token**. The first backup goes up right away.
-6. Once the new app shows everything, delete the old icon. Then go to the GitHub repo's **Settings → Pages** and unpublish the old site.
-
-## Local development
-
-```
-npm run build
-npx wrangler pages dev dist --kv BACKUPS     # the app and the backup API on http://127.0.0.1:8788, with a local KV
-npm run dev                                   # optional: Vite on http://localhost:5173, sends /api to the server above
-```
-
-`wrangler pages dev` reads the token from a git-ignored `.dev.vars` file in the project folder, containing one line: `BACKUP_TOKEN=any-local-token-at-least-16-chars`. Wrangler isn't a project dependency; `npx` fetches it when you run it (tested with 4.147.0).
-
-## The backup API
-
-Every request needs `Authorization: Bearer <BACKUP_TOKEN>`.
-
-| Request | Answer |
+| The app says | Fix |
 |---|---|
-| `PUT /api/backup` with a snapshot as the body | Stores it as `snap:<ISO time>`, copies it to `latest`, and deletes all but the 20 newest snapshots. If `latest` has more sessions, it answers `409` and stores nothing; `?confirm=fewer` overrides that. |
-| `GET /api/backup` | The `latest` snapshot. `?key=snap:…` returns an older one. |
-| `GET /api/backup/list` | `{ latest, snapshots: [{ key, at, sessions, schemaVersion, bytes }] }`, newest first. |
+| "The app isn't connected to a Supabase project yet." | Step 3 isn't done: `src/cloud/config.ts` is still empty. |
+| "The backup functions are missing…" | Run `supabase/setup.sql` (step 2). |
+| "Token rejected" | The token on the phone isn't the one from step 2. |
+| "Couldn't back up… It retries by itself." after a long break | Supabase pauses free projects after a week without activity. In the Supabase dashboard, open the project and click **Restore project**. Nothing is lost: the phone keeps everything and backs up again once the project is back. |
 
-Each snapshot's session count is stored as KV metadata, so the list never reads the snapshots themselves. The rules are in DECISIONS.md, A12–A21.
+**Lost the token?** In the SQL Editor, run `select cali.new_token();`. That makes a new token and the old one stops working. Paste the new one on the phone.
 
-Each backup costs Cloudflare 1 read, 2 writes, 1 list and at most 1 delete. The free plan allows 1,000 writes a day.
+## How the backup works
+
+The script creates three functions, all of which check the token first:
+
+| Function | Does |
+|---|---|
+| `backup_put(p_token, p_snapshot, p_confirm_fewer)` | Stores the snapshot as `snap:<server time>` and keeps the 20 newest. If the latest backup has more sessions, it answers `{ error: 'fewer' }` and stores nothing, unless `p_confirm_fewer` is true. |
+| `backup_get(p_token, p_key)` | `{ snapshot }`: the latest, or the one with this key. |
+| `backup_list(p_token)` | `{ latest, snapshots: [{ key, at, sessions, schemaVersion, bytes }] }`, newest first. |
+
+The app calls them as `POST <Project URL>/rest/v1/rpc/<function>`. The tables live in a schema called `cali`, which the public API can't see. The tests (`src/cloud/__tests__/backup.test.ts`) run this same `setup.sql` in PGlite, a real Postgres in Node. The rules are in DECISIONS.md, A12–A21.

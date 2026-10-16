@@ -2,8 +2,8 @@ import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
-// Cloudflare Pages serves the app from the root (DEPLOY.md).
-const base = '/';
+// GitHub Pages serves the app from /calisthenics-training/.
+const base = '/calisthenics-training/';
 
 export default defineConfig({
   base,
@@ -33,16 +33,10 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}'],
         navigateFallback: `${base}index.html`,
-        // The backup API is never cached and never answered with the app shell.
-        navigateFallbackDenylist: [/^\/api\//],
         cleanupOutdatedCaches: true,
       },
     }),
   ],
-  server: {
-    // `npx wrangler pages dev dist` runs the backup function on 8788 (DEPLOY.md, local development).
-    proxy: { '/api': 'http://127.0.0.1:8788' },
-  },
   test: {
     include: ['src/**/*.test.ts'],
   },

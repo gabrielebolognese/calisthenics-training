@@ -41,7 +41,7 @@ export function cloudLine(v: CloudView): { tone: 'idle' | 'busy' | 'good' | 'war
     case 'error':
       return { tone: 'warn', title: 'Couldn’t back up', detail: `${v.message ?? ''} It retries by itself. ${last}`.trim() };
     case 'auth':
-      return { tone: 'bad', title: 'Token rejected', detail: 'It doesn’t match BACKUP_TOKEN on Cloudflare. Paste it again.' };
+      return { tone: 'bad', title: 'Token rejected', detail: 'It doesn’t match the token from the Supabase setup. Paste it again.' };
     case 'setup':
       return { tone: 'bad', title: 'Server not set up', detail: v.message ?? '' };
     case 'fewer':
